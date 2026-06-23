@@ -68,13 +68,21 @@ if (fs.existsSync(assetsDir)) {
   console.log("  ✓ assets copied (hdiffz, hpatchz, nsis.zip)");
 }
 
-// Copy installer.nsi
+// Copy installer.nsi and hpatchz.exe to delta-installer-builder/
+// NSIS File commands resolve relative to script directory
+const installerDir = path.join(DIST, "builder", "delta-installer-builder");
+fs.mkdirSync(installerDir, { recursive: true });
+
 const nsiSrc = path.join(__dirname, "src", "builder", "delta-installer-builder", "installer.nsi");
-const nsiDest = path.join(DIST, "builder", "delta-installer-builder", "installer.nsi");
-fs.mkdirSync(path.dirname(nsiDest), { recursive: true });
 if (fs.existsSync(nsiSrc)) {
-  fs.copyFileSync(nsiSrc, nsiDest);
+  fs.copyFileSync(nsiSrc, path.join(installerDir, "installer.nsi"));
   console.log("  ✓ installer.nsi copied");
+}
+
+const hpatchzSrc = path.join(__dirname, "assets", "hpatchz.exe");
+if (fs.existsSync(hpatchzSrc)) {
+  fs.copyFileSync(hpatchzSrc, path.join(installerDir, "hpatchz.exe"));
+  console.log("  ✓ hpatchz.exe copied to NSIS dir");
 }
 
 console.log("  ✓ Build complete");
