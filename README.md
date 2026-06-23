@@ -64,7 +64,8 @@ async function checkUpdate() {
   });
 
   await updater.setFeedURL("https://your-cdn.com/app-updates/");
-  await updater.boot({ splashScreen: true });
+  // splashLogo: 闪屏窗口的 logo，支持文字或图片路径
+  await updater.boot({ splashScreen: true, splashLogo: 'MyApp' });
   // resolve → 无更新，应用正常启动
   // 有更新 → 自动下载补丁 → 应用退出 → 应用补丁 → 重启
 }
@@ -249,7 +250,7 @@ new DeltaUpdater(options: DeltaUpdaterOptions)
 
 | 方法 | 说明 |
 |------|------|
-| `boot({ splashScreen })` | 启动更新检查。splashScreen=true 时显示闪屏窗口 |
+| `boot({ splashScreen, splashLogo })` | 启动更新检查。splashScreen=true 显示闪屏；splashLogo 支持文字或图片路径 |
 | `setFeedURL(url)` | 设置更新源地址 |
 | `quitAndInstall()` | 立即退出并安装更新 |
 
