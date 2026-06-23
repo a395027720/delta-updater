@@ -1,6 +1,6 @@
 {
   "name": "@jake-gao/delta-updater",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "HDiffPatch-based delta updater for Electron apps (Windows only), vendored from @electron-delta",
   "main": "dist/updater/index.js",
   "types": "dist/updater/index.d.ts",
@@ -34,8 +34,12 @@
     "typescript": "^5.4.2"
   },
   "dependencies": {
+    "7zip-bin": "^5.2.0",
     "cross-fetch": "^3.1.5",
+    "env-paths": "^4.0.0",
     "fs-extra": "^10.1.0",
+    "got": "^15.0.6",
+    "node-7z": "^3.0.0",
     "semver": "^7.5.4",
     "yaml": "^2.4.0"
   },
