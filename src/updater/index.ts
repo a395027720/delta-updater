@@ -11,7 +11,7 @@ import crypto from 'crypto';
 import fs from 'fs-extra';
 import fetch from 'cross-fetch';
 import semver from 'semver';
-import { execSync } from 'child_process';
+import { spawn } from 'child_process';
 import yaml from 'yaml';
 
 import { downloadFile, niceBytes } from './download';
@@ -277,18 +277,14 @@ class DeltaUpdater extends EventEmitter {
     if (this.autoUpdateInfo) {
       this.logger.info('[Updater] On Quit ', this.autoUpdateInfo);
       if (this.autoUpdateInfo.delta) {
-        try {
-          this.logger.log(this.autoUpdateInfo.deltaPath, [
-            `/APPPATH="${this.appPath}"`,
-            '/RESTART="0"',
-          ]);
-          execSync(
-            `${this.autoUpdateInfo.deltaPath} /APPPATH="${this.appPath}" /RESTART="0"`,
-            { stdio: 'ignore' },
-          );
-        } catch (err) {
-          this.logger.error('[Updater] 启动进程失败 ', err);
-        }
+        this.logger.info('[Updater] 退出时应用增量更新');
+        spawn(this.autoUpdateInfo.deltaPath, [
+          `/APPPATH="${this.appPath}"`,
+          '/RESTART="0"',
+        ], {
+          stdio: 'ignore',
+          detached: true,
+        }).unref();
       } else {
         await this.applyUpdate(this.autoUpdateInfo.version, false);
       }
@@ -341,11 +337,11 @@ class DeltaUpdater extends EventEmitter {
     });
   }
 
-  async boot({ splashScreen }: { splashScreen?: boolean }) {
+  async boot({ splashScreen, splashLogo }: { splashScreen?: boolean; splashLogo?: string }) {
     this.logger.info('[Updater] 正在启动');
 
     if (splashScreen) {
-      const startURL = getStartURL();
+      const startURL = getStartURL(splashLogo);
       this.createSplashWindow();
       this.updaterWindow!.loadURL(startURL);
     }
@@ -529,23 +525,26 @@ class DeltaUpdater extends EventEmitter {
     });
     this.ensureSafeQuitAndInstall();
 
-    try {
-      this.logger.log(deltaPath, [
-        `/APPPATH="${this.appPath}"`,
-        '/RESTART="1"',
-      ]);
-      execSync(
-        `${deltaPath} /APPPATH="${this.appPath}" /RESTART="1"`,
-        { stdio: 'ignore' },
-      );
-      if (this.boundOnQuit) {
-        app.removeListener('quit', this.boundOnQuit);
-      }
-      (app as any).isQuitting = true;
-      app.quit();
-    } catch (err) {
-      this.logger.info('[Updater] 应用增量更新失败 ', err);
+    // Remove quit listener to prevent onQuit from firing again
+    if (this.boundOnQuit) {
+      app.removeListener('quit', this.boundOnQuit);
+      this.boundOnQuit = null;
     }
+
+    // Spawn delta.exe asynchronously and exit immediately.
+    // This avoids the old process lingering while delta.exe runs,
+    // which would cause two instances when delta.exe restarts the app.
+    const child = spawn(deltaPath, [
+      `/APPPATH="${this.appPath}"`,
+      '/RESTART="1"',
+    ], {
+      stdio: 'ignore',
+      detached: true,
+    });
+    child.unref();
+
+    (app as any).isQuitting = true;
+    app.exit(0);
   }
 }
 

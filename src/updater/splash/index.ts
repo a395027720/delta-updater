@@ -179,6 +179,7 @@ export function getWindow(): BrowserWindow {
     fullscreenable: false,
     skipTaskbar: false,
     center: true,
+    alwaysOnTop: true,
     movable: false,
     webPreferences: {
       nodeIntegration: false,
@@ -196,8 +197,25 @@ export function getWindow(): BrowserWindow {
   return win;
 }
 
-export function getStartURL(): string {
-  return "data:text/html;charset=utf-8," + encodeURIComponent(splashHtml);
+function isImagePath(logo: string): boolean {
+  return /\.(png|ico|svg|jpg|jpeg|gif)$/i.test(logo)
+    || logo.startsWith('/')
+    || logo.startsWith('http');
+}
+
+export function getStartURL(logo?: string): string {
+  let html = splashHtml;
+  if (logo) {
+    if (isImagePath(logo)) {
+      html = splashHtml.replace(
+        '>H<',
+        `><img src="${logo}" style="width:100%;height:100%;object-fit:contain;border-radius:8px" /><`,
+      );
+    } else {
+      html = splashHtml.replace('>H<', `>${logo}<`);
+    }
+  }
+  return "data:text/html;charset=utf-8," + encodeURIComponent(html);
 }
 
 export function dispatchEvent(
