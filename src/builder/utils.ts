@@ -61,42 +61,15 @@ export const downloadFileIfNotExists = async (
 };
 
 /**
- * Extract NSIS installer using 7z.
- * Uses electron-builder's built-in 7za (SZA_PATH) or system 7z.
+ * Extract NSIS installer using bundled 7za.exe.
  */
-export const extract7zip = (
-  archivePath: string,
-  dest: string
-): void => {
+export const extract7zip = (archivePath: string, dest: string): void => {
   fs.ensureDirSync(dest);
 
-  // electron-builder sets SZA_PATH to its bundled 7za binary
-  const szaPath = process.env.SZA_PATH;
+  const sza = path.join(__dirname, "..", "assets", "7za.exe");
 
-  try {
-    if (szaPath && fs.existsSync(szaPath)) {
-      execSync(`"${szaPath}" x "${archivePath}" -o"${dest}" -y`, {
-        stdio: "pipe",
-        timeout: 300000,
-      });
-    } else {
-      execSync(`7z x "${archivePath}" -o"${dest}" -y`, {
-        stdio: "pipe",
-        timeout: 300000,
-      });
-    }
-  } catch {
-    // Last resort: try system 7z or fail with clear message
-    try {
-      execSync(`7za x "${archivePath}" -o"${dest}" -y`, {
-        stdio: "pipe",
-        timeout: 300000,
-      });
-    } catch {
-      throw new Error(
-        `7z not found. Install 7-Zip or set SZA_PATH.\n` +
-        `Tried to extract: ${archivePath}`
-      );
-    }
-  }
+  execSync(`"${sza}" x "${archivePath}" -o"${dest}" -y`, {
+    stdio: "pipe",
+    timeout: 300000,
+  });
 };

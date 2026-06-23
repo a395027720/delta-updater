@@ -72,32 +72,11 @@ const downloadFileIfNotExists = async (url, dest) => {
 };
 const extract7zip = (archivePath, dest) => {
   import_fs_extra.default.ensureDirSync(dest);
-  const szaPath = process.env.SZA_PATH;
-  try {
-    if (szaPath && import_fs_extra.default.existsSync(szaPath)) {
-      (0, import_child_process.execSync)(`"${szaPath}" x "${archivePath}" -o"${dest}" -y`, {
-        stdio: "pipe",
-        timeout: 3e5
-      });
-    } else {
-      (0, import_child_process.execSync)(`7z x "${archivePath}" -o"${dest}" -y`, {
-        stdio: "pipe",
-        timeout: 3e5
-      });
-    }
-  } catch {
-    try {
-      (0, import_child_process.execSync)(`7za x "${archivePath}" -o"${dest}" -y`, {
-        stdio: "pipe",
-        timeout: 3e5
-      });
-    } catch {
-      throw new Error(
-        `7z not found. Install 7-Zip or set SZA_PATH.
-Tried to extract: ${archivePath}`
-      );
-    }
-  }
+  const sza = import_path.default.join(__dirname, "..", "assets", "7za.exe");
+  (0, import_child_process.execSync)(`"${sza}" x "${archivePath}" -o"${dest}" -y`, {
+    stdio: "pipe",
+    timeout: 3e5
+  });
 };
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
