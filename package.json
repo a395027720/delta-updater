@@ -1,6 +1,6 @@
 {
   "name": "@jake-gao/delta-updater",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "HDiffPatch-based delta updater for Electron apps (Windows only), vendored from @electron-delta",
   "main": "dist/updater/index.js",
   "types": "dist/updater/index.d.ts",

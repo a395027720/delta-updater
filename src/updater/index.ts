@@ -280,13 +280,26 @@ class DeltaUpdater extends EventEmitter {
       this.logger.info('[Updater] On Quit ', this.autoUpdateInfo);
       if (this.autoUpdateInfo.delta) {
         this.logger.info('[Updater] 退出时应用增量更新');
-        spawn(this.autoUpdateInfo.deltaPath, [
+        const child = spawn(this.autoUpdateInfo.deltaPath, [
           `/APPPATH="${this.appPath}"`,
           '/RESTART="0"',
         ], {
-          stdio: 'ignore',
+          stdio: ['ignore', 'ignore', 'pipe'],
           detached: true,
-        }).unref();
+        });
+        child.stderr?.on('data', (chunk: Buffer) => {
+          const msg = chunk.toString().trim();
+          if (msg) {
+            this.logger.error('[Updater] delta.exe(onQuit) stderr: ', msg);
+          }
+        });
+        child.on('error', (err) => {
+          this.logger.error('[Updater] delta.exe(onQuit) 启动失败: ', err);
+        });
+        child.on('close', (code) => {
+          this.logger.info(`[Updater] delta.exe(onQuit) 已退出, code=${code}`);
+        });
+        child.unref();
       } else {
         await this.applyUpdate(this.autoUpdateInfo.version, false);
       }
@@ -568,17 +581,33 @@ class DeltaUpdater extends EventEmitter {
     this.ensureSafeQuitAndInstall();
 
     let spawnFailed = false;
+    let stderrLogs = '';
 
     try {
       const child = spawn(
         deltaPath,
         [`/APPPATH="${this.appPath}"`, '/RESTART="1"'],
-        { stdio: 'ignore', detached: true },
+        { stdio: ['ignore', 'ignore', 'pipe'], detached: true },
       );
+
+      child.stderr?.on('data', (chunk: Buffer) => {
+        const msg = chunk.toString().trim();
+        if (msg) {
+          stderrLogs += msg + '\n';
+          this.logger.error('[Updater] delta.exe stderr: ', msg);
+        }
+      });
 
       child.on('error', (err) => {
         spawnFailed = true;
         this.logger.error('[Updater] 增量安装器启动失败: ', err);
+      });
+
+      child.on('close', (code) => {
+        this.logger.info(`[Updater] delta.exe 已退出, code=${code}`);
+        if (stderrLogs) {
+          this.logger.info('[Updater] delta.exe 完整日志:\n', stderrLogs);
+        }
       });
 
       child.unref();
@@ -604,8 +633,9 @@ class DeltaUpdater extends EventEmitter {
       return;
     }
 
+    // 使用 app.exit() 确保 Electron 正确退出，释放文件锁给 delta.exe
     (app as any).isQuitting = true;
-    process.exit(0);
+    app.exit(0);
   }
 }
 

@@ -47,14 +47,13 @@ Section "gen_package" SEC01
     File "${DELTA_FILE_PATH}"
 
     nsExec::ExecToLog '"$INSTDIR\hpatchz.exe" -C-all "$apppath" "$INSTDIR\${DELTA_FILE_NAME}" "$apppath" -f'
-    DetailPrint $0
-    Pop $0
+    Pop $0  ; hpatchz exit code
 
-
-
-    ; WriteRegStr SHELL_CONTEXT "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${APP_GUID}" DisplayName "${PRODUCT_NAME}"
-    ; WriteRegDWORD SHELL_CONTEXT "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${APP_GUID}" "EstimatedSize" "${NEW_APP_SIZE}"
-    ; WriteRegStr SHELL_CONTEXT "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${APP_GUID}" "DisplayVersion" "${NEW_APP_VERSION}"
+    ${If} $0 != 0
+       DetailPrint "hpatchz failed with exit code $0, aborting restart"
+       SetErrorLevel $0
+       Quit
+    ${EndIf}
 
     DetailPrint $apppath
     DetailPrint  "$apppath\${PROCESS_NAME}.exe"
