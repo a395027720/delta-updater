@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electron";
+import fs from "fs";
 import path from "path";
 
 const MAIN_MESSAGE = "@jake-gao/delta-updater:main";
@@ -44,11 +45,13 @@ const splashHtml = `<!DOCTYPE html>
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 17px;
-      font-weight: 700;
-      color: #fff;
       flex-shrink: 0;
       box-shadow: 0 2px 10px rgba(91, 141, 239, 0.25);
+    }
+    .logo svg {
+      width: 18px;
+      height: 18px;
+      stroke: #fff;
     }
     .title {
       font-size: 14px;
@@ -106,7 +109,7 @@ const splashHtml = `<!DOCTYPE html>
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo">H</div>
+      <div class="logo">{logo}</div>
       <span class="title">应用更新</span>
     </div>
     <div class="status-area">
@@ -198,23 +201,69 @@ export function getWindow(): BrowserWindow {
 }
 
 function isImagePath(logo: string): boolean {
-  return /\.(png|ico|svg|jpg|jpeg|gif)$/i.test(logo)
-    || logo.startsWith('/')
-    || logo.startsWith('http');
+  return (
+    /\.(png|ico|svg|jpg|jpeg|gif)$/i.test(logo) ||
+    logo.startsWith("/") ||
+    logo.startsWith("http")
+  );
+}
+
+const MIME_MAP: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".svg": "image/svg+xml",
+};
+
+/**
+ * 将本地图片路径转为 base64 data URL，用于在 sandbox 环境中嵌入图片。
+ * 如果已是 data: / http 格式或转换失败，返回 null。
+ */
+function toDataURL(logo: string): string | null {
+  // 已经是 data URL 或远程 URL，直接使用
+  if (logo.startsWith("data:") || logo.startsWith("http")) {
+    return logo;
+  }
+
+  try {
+    const filePath = path.isAbsolute(logo) ? logo : path.resolve(process.cwd(), logo);
+    if (!fs.existsSync(filePath)) return null;
+
+    const ext = path.extname(filePath).toLowerCase();
+    const mime = MIME_MAP[ext] || "image/png";
+    const buf = fs.readFileSync(filePath);
+    return `data:${mime};base64,${buf.toString("base64")}`;
+  } catch {
+    return null;
+  }
 }
 
 export function getStartURL(logo?: string): string {
-  let html = splashHtml;
+  // 默认：下载/更新 SVG 图标
+  const defaultSVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+    '<polyline points="7 10 12 15 17 10"/>' +
+    '<line x1="12" y1="15" x2="12" y2="3"/>' +
+    '</svg>';
+
+  let logoContent = defaultSVG;
+
   if (logo) {
     if (isImagePath(logo)) {
-      html = splashHtml.replace(
-        '>H<',
-        `><img src="${logo}" style="width:100%;height:100%;object-fit:contain;border-radius:8px" /><`,
-      );
+      const dataUrl = toDataURL(logo);
+      if (dataUrl) {
+        logoContent = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:8px" />`;
+      }
     } else {
-      html = splashHtml.replace('>H<', `>${logo}<`);
+      logoContent = logo;
     }
   }
+
+  const html = splashHtml.replace("{logo}", logoContent);
   return "data:text/html;charset=utf-8," + encodeURIComponent(html);
 }
 

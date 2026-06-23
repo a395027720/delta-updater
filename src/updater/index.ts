@@ -318,7 +318,8 @@ class DeltaUpdater extends EventEmitter {
     if (this.updaterWindow) {
       this.logger.info('[Updater] 触发更新');
       await this.quitAndInstall();
-      resolve();
+      // 更新已触发，进程即将退出，不应 resolve boot promise
+      // 否则旧进程会继续执行 app.run()，创建无效窗口
     } else {
       this.logger.info('[Updater] 未找到启动窗口，仅显示通知');
       this.showUpdateNotification(this.autoUpdateInfo);
@@ -523,17 +524,16 @@ class DeltaUpdater extends EventEmitter {
       isDelta: true,
       attemptedVersion: version,
     });
-    this.ensureSafeQuitAndInstall();
 
-    // Remove quit listener to prevent onQuit from firing again
+    // 必须在 ensureSafeQuitAndInstall 之前移除 quit 监听器，
+    // 否则关闭窗口时可能触发 onQuit，导致重复 spawn delta.exe
     if (this.boundOnQuit) {
       app.removeListener('quit', this.boundOnQuit);
       this.boundOnQuit = null;
     }
 
-    // Spawn delta.exe asynchronously, then exit.
-    // Give the child a moment to initialize before exiting,
-    // so delta.exe can apply the patch and restart the app.
+    this.ensureSafeQuitAndInstall();
+
     const child = spawn(deltaPath, [
       `/APPPATH="${this.appPath}"`,
       '/RESTART="1"',
@@ -541,11 +541,16 @@ class DeltaUpdater extends EventEmitter {
       stdio: 'ignore',
       detached: true,
     });
+
+    child.on('error', (err) => {
+      this.logger.error('[Updater] 启动增量安装器失败: ', err);
+    });
+
     child.unref();
 
     (app as any).isQuitting = true;
-    // Brief delay ensures delta.exe has started before we exit
-    setTimeout(() => process.exit(0), 1000);
+    // detached + unref 的子进程不依赖父进程，直接退出即可
+    process.exit(0);
   }
 }
 
