@@ -66,7 +66,7 @@ export const downloadFileIfNotExists = async (
 export const extract7zip = (archivePath: string, dest: string): void => {
   fs.ensureDirSync(dest);
 
-  const sza = path.join(__dirname, "..", "assets", "7za.exe");
+  const sza = path.join(__dirname, "assets", "7za.exe");
 
   execSync(`"${sza}" x "${archivePath}" -o"${dest}" -y`, {
     stdio: "pipe",

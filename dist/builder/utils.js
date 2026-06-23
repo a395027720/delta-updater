@@ -72,7 +72,7 @@ const downloadFileIfNotExists = async (url, dest) => {
 };
 const extract7zip = (archivePath, dest) => {
   import_fs_extra.default.ensureDirSync(dest);
-  const sza = import_path.default.join(__dirname, "..", "assets", "7za.exe");
+  const sza = import_path.default.join(__dirname, "assets", "7za.exe");
   (0, import_child_process.execSync)(`"${sza}" x "${archivePath}" -o"${dest}" -y`, {
     stdio: "pipe",
     timeout: 3e5
