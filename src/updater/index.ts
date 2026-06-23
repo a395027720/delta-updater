@@ -81,6 +81,7 @@ class DeltaUpdater extends EventEmitter {
   deltaHolderPath!: string;
   updaterWindow: BrowserWindow | null = null;
   boundOnQuit: ((...args: any[]) => void) | null = null;
+  private _timedOut = false;
 
   constructor(options: { logger?: any; autoUpdater?: any; hostURL?: string }) {
     super();
@@ -123,9 +124,10 @@ class DeltaUpdater extends EventEmitter {
       `../Local/${this.updateConfig.updaterCacheDirName}`,
     );
 
+    // update-details.json 存到 userData，避免被 clearUpdateCache 误删
     this.updateDetailsJSON = path.join(
-      this.deltaUpdaterRootPath,
-      './update-details.json',
+      app.getPath('userData'),
+      'delta-update-details.json',
     );
     this.deltaHolderPath = path.join(this.deltaUpdaterRootPath, './deltas');
   }
@@ -315,6 +317,13 @@ class DeltaUpdater extends EventEmitter {
 
   async handleUpdateDownloaded(info: UpdateInfo, resolve: () => void) {
     this.autoUpdateInfo = info;
+
+    // 超时后不再安装更新，此时缓存可能已被清理，且闪屏已关闭
+    if (this._timedOut) {
+      this.logger.info('[Updater] 启动已超时，跳过更新安装，下次启动重试');
+      return;
+    }
+
     if (this.updaterWindow) {
       this.logger.info('[Updater] 触发更新');
       await this.quitAndInstall();
@@ -358,6 +367,7 @@ class DeltaUpdater extends EventEmitter {
         this.logger.warn(
           `[Updater] 检查更新超时 (${timeoutMs / 1000}s)，继续启动`,
         );
+        this._timedOut = true;
         resolve();
       }, timeoutMs);
     });
@@ -365,6 +375,8 @@ class DeltaUpdater extends EventEmitter {
     return Promise.race([updateCheckPromise, timeoutPromise])
       .then(() => {
         this.logger.info('[Updater] 启动完成');
+        // 无更新时清理旧增量补丁，避免磁盘占用累积
+        this.clearDeltaCache();
         if (
           splashScreen &&
           this.updaterWindow &&
@@ -505,12 +517,33 @@ class DeltaUpdater extends EventEmitter {
     }
   }
 
+  /**
+   * 清除增量缓存目录 (deltas/) 中的旧补丁文件。
+   * 无更新或更新失败时调用，避免磁盘占用累积。
+   */
+  clearDeltaCache(): void {
+    try {
+      if (this.deltaHolderPath && fs.existsSync(this.deltaHolderPath)) {
+        fs.emptyDirSync(this.deltaHolderPath);
+        this.logger.info('[Updater] 已清理增量缓存目录');
+      }
+    } catch (err) {
+      this.logger.error('[Updater] 清理增量缓存失败: ', err);
+    }
+  }
+
   async applyUpdate(version: string, forceRunAfter = true) {
     this.logger.info('[Updater] 正在应用全量更新');
     await this.writeAutoUpdateDetails({
       isDelta: false,
       attemptedVersion: version,
     });
+
+    // 必须在 ensureSafeQuitAndInstall 之前移除，防止 onQuit 重复调用
+    if (this.boundOnQuit) {
+      app.removeListener('quit', this.boundOnQuit);
+      this.boundOnQuit = null;
+    }
 
     this.ensureSafeQuitAndInstall();
     setTimeout(
@@ -534,22 +567,44 @@ class DeltaUpdater extends EventEmitter {
 
     this.ensureSafeQuitAndInstall();
 
-    const child = spawn(deltaPath, [
-      `/APPPATH="${this.appPath}"`,
-      '/RESTART="1"',
-    ], {
-      stdio: 'ignore',
-      detached: true,
-    });
+    let spawnFailed = false;
 
-    child.on('error', (err) => {
-      this.logger.error('[Updater] 启动增量安装器失败: ', err);
-    });
+    try {
+      const child = spawn(
+        deltaPath,
+        [`/APPPATH="${this.appPath}"`, '/RESTART="1"'],
+        { stdio: 'ignore', detached: true },
+      );
 
-    child.unref();
+      child.on('error', (err) => {
+        spawnFailed = true;
+        this.logger.error('[Updater] 增量安装器启动失败: ', err);
+      });
+
+      child.unref();
+
+      // 给子进程 300ms 窗口期检测启动是否成功，
+      // 若失败则回退到全量更新
+      await new Promise<void>((resolve) => setTimeout(resolve, 300));
+
+      if (spawnFailed) {
+        this.logger.info('[Updater] 增量安装器启动失败，回退全量更新');
+        // 重新注册 quit 监听器
+        this.boundOnQuit = this.onQuit.bind(this);
+        app.on('quit', this.boundOnQuit);
+        await this.applyUpdate(version, true);
+        return;
+      }
+    } catch (err) {
+      // spawn 同步抛异常（如文件不存在），也回退全量更新
+      this.logger.error('[Updater] 增量更新异常，回退全量更新: ', err);
+      this.boundOnQuit = this.onQuit.bind(this);
+      app.on('quit', this.boundOnQuit);
+      await this.applyUpdate(version, true);
+      return;
+    }
 
     (app as any).isQuitting = true;
-    // detached + unref 的子进程不依赖父进程，直接退出即可
     process.exit(0);
   }
 }

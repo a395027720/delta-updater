@@ -250,9 +250,10 @@ new DeltaUpdater(options: DeltaUpdaterOptions)
 
 | 方法 | 说明 |
 |------|------|
-| `boot({ splashScreen, splashLogo })` | 启动更新检查。splashScreen=true 显示闪屏；splashLogo 支持文字或图片路径 |
+| `boot({ splashScreen, splashLogo })` | 启动更新检查。splashScreen=true 显示闪屏；splashLogo 支持文字、图片路径（自动转 base64）或 SVG；无更新时自动清理旧补丁缓存 |
 | `setFeedURL(url)` | 设置更新源地址 |
 | `quitAndInstall()` | 立即退出并安装更新 |
+| `clearDeltaCache()` | 手动清理增量补丁缓存目录（`deltas/`），一般无需手动调用，`boot()` 无更新时会自动清理 |
 
 #### 事件
 
@@ -338,10 +339,31 @@ DeltaUpdater.boot()
   ├── 下载 .delta.exe
   ├── 闪屏显示进度
   └── 下载完成
-      ├── execSync: delta.exe /APPPATH="..." /RESTART="1"
+      ├── spawn: delta.exe /APPPATH="..." /RESTART="1"
       ├── hpatchz 应用补丁到安装目录
       └── 重启应用 → 新版本运行
+
+无更新时
+  ↓
+boot() resolve
+  ├── 记录日志 [Updater] 启动完成
+  ├── 自动清理旧补丁缓存 (clearDeltaCache)
+  └── 关闭闪屏 → 应用正常启动
 ```
+
+#### 缓存目录与清理
+
+增量补丁下载到以下目录：
+
+```
+%APPDATA%/../Local/<updaterCacheDirName>/deltas/
+```
+
+其中 `<updaterCacheDirName>` 由 `app-update.yml` 配置（通常为 `<appName>-updater`）。
+
+**自动清理**：`boot()` 无可用更新时（即应用正常启动），会自动清空 `deltas/` 目录，避免补丁文件累积占用磁盘。有更新时不清除（增量安装器正在使用）。
+
+**手动清理**：也可调用 `updater.clearDeltaCache()` 强制清空。
 
 ---
 
