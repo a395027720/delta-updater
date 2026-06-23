@@ -17,7 +17,9 @@ export function downloadFile(
   url: string,
   filePath: string,
   onProgressCb?: (info: { transferred: string; percentage: string; total: string }) => void,
+  _redirectCount = 0,
 ): Promise<void> {
+  const MAX_REDIRECTS = 10;
   return new Promise((resolve, reject) => {
     let total = 0;
     let totalLen = '0 MB';
@@ -58,8 +60,10 @@ export function downloadFile(
         response.pipe(file).once('finish', () => {
           resolve();
         });
+      } else if ((response.statusCode === 302 || response.statusCode === 301) && _redirectCount < MAX_REDIRECTS) {
+        downloadFile(response.headers.location!, filePath, onProgressCb, _redirectCount + 1).then(() => resolve());
       } else if (response.statusCode === 302 || response.statusCode === 301) {
-        downloadFile(response.headers.location!, filePath, onProgressCb).then(() => resolve());
+        reject(new Error(`Too many redirects (max ${MAX_REDIRECTS})`));
       } else {
         reject(new Error(`Network error ${response.statusCode}`));
       }

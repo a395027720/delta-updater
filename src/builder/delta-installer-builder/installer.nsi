@@ -3,7 +3,7 @@
 
 Name "${PRODUCT_NAME}-Delta-Updater"
 OutFile "${INSTALLER_OUTPUT_PATH}"
-RequestExecutionLevel user
+RequestExecutionLevel highest
 ShowInstDetails nevershow
 Unicode true
 

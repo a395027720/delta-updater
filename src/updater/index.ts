@@ -282,7 +282,7 @@ class DeltaUpdater extends EventEmitter {
         this.logger.info('[Updater] 退出时应用增量更新');
         try {
           execSync(
-            `${this.autoUpdateInfo.deltaPath} /APPPATH="${this.appPath}" /RESTART="0"`,
+            `"${this.autoUpdateInfo.deltaPath}" /APPPATH="${this.appPath}" /RESTART="0"`,
             { stdio: 'ignore' },
           );
         } catch (err) {
@@ -319,13 +319,14 @@ class DeltaUpdater extends EventEmitter {
   async handleUpdateDownloaded(info: UpdateInfo, resolve: () => void) {
     this.autoUpdateInfo = info;
 
-    // 超时后不再安装更新，此时缓存可能已被清理，且闪屏已关闭
+    // 超时后 splash 已关闭，但更新仍要安装，不丢弃已下载的补丁
     if (this._timedOut) {
-      this.logger.info('[Updater] 启动已超时，跳过更新安装，下次启动重试');
+      this.logger.info('[Updater] 启动已超时，后台安装更新');
+      await this.quitAndInstall();
       return;
     }
 
-    if (this.updaterWindow) {
+    if (this.updaterWindow && !this.updaterWindow.isDestroyed()) {
       this.logger.info('[Updater] 触发更新');
       await this.quitAndInstall();
       // 更新已触发，进程即将退出，不应 resolve boot promise
@@ -575,13 +576,15 @@ class DeltaUpdater extends EventEmitter {
         [`/APPPATH="${this.appPath}"`, '/RESTART="1"'],
       );
       execSync(
-        `${deltaPath} /APPPATH="${this.appPath}" /RESTART="1"`,
+        `"${deltaPath}" /APPPATH="${this.appPath}" /RESTART="1"`,
         { stdio: 'ignore' },
       );
       (app as any).isQuitting = true;
       app.quit();
     } catch (err) {
       this.logger.error('[Updater] 增量更新执行失败: ', err);
+      (app as any).isQuitting = true;
+      app.quit();
     }
   }
 }
