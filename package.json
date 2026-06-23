@@ -1,0 +1,46 @@
+{
+  "name": "@jake-gao/delta-updater",
+  "version": "1.0.0",
+  "description": "HDiffPatch-based delta updater for Electron apps (Windows only), vendored from @electron-delta",
+  "main": "dist/updater/index.js",
+  "types": "dist/updater/index.d.ts",
+  "exports": {
+    ".": "./dist/updater/index.js",
+    "./builder": "./dist/builder/hook.js",
+    "./builder/hook": "./dist/builder/hook.js"
+  },
+  "files": [
+    "dist/",
+    "builder.js"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["electron", "delta-update", "hdiffpatch", "nsis"],
+  "author": "高建强",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jq/delta-updater.git"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.2"
+  },
+  "dependencies": {
+    "cross-fetch": "^3.1.5",
+    "fs-extra": "^10.1.0",
+    "semver": "^7.5.4",
+    "yaml": "^2.4.0"
+  },
+  "peerDependencies": {
+    "electron": ">=22.0.0",
+    "electron-updater": ">=6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "electron-updater": {
+      "optional": true
+    }
+  }
+}
