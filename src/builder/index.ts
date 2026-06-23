@@ -1,6 +1,8 @@
 /**
- * DeltaBuilder main — Windows only
- * Vendored & trimmed from @electron-delta/builder
+ * Builder 主入口 — Windows only
+ * 被 hook.ts 的 createHook 内部调用
+ *
+ * 遍历构建目标，找到 NSIS target，调用 createAllDeltas 生成差量补丁
  */
 import path from "path";
 import os from "os";
@@ -26,6 +28,7 @@ interface BuildOptions {
   getPreviousReleases: (opts?: any) => Promise<any[]>;
 }
 
+/** 从构建产物路径中找到 NSIS 安装器 */
 function getLatestReleaseInfo(artifactPaths: string[], target: string) {
   const latestReleaseFilePath = artifactPaths.filter((d) => {
     if (target === "nsis" && !d.includes("nsis-web")) {
@@ -43,6 +46,10 @@ function getLatestReleaseInfo(artifactPaths: string[], target: string) {
   };
 }
 
+/**
+ * 主构建函数
+ * 遍历 platformToTargets → 找到 Windows → NSIS → 调用 createAllDeltas
+ */
 export async function build({
   context,
   options,

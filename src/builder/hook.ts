@@ -1,15 +1,79 @@
 /**
  * electron-builder afterAllArtifactBuild hook
  *
- * 用法（零配置）：
- *   "afterAllArtifactBuild": "@jake-gao/delta-updater/builder"
+ * ============================================================
+ * 触发时机 & 整体流程
+ * ============================================================
  *
- * 自定义配置：
- *   "afterAllArtifactBuild": "./electron-delta.hook.js"
- *   // electron-delta.hook.js:
- *   const { createHook } = require("@jake-gao/delta-updater/builder");
- *   module.exports = createHook({ releasesDir: "my-releases" });
+ *  electron-builder 执行完所有打包任务后，调用此 hook
+ *
+ *    afterAllArtifactBuild
+ *      ↓
+ *    1. NSIS 检查 (makensis.exe)
+ *       ├── 已在 %APPDATA%/electron-delta-bins/ 缓存 → 跳过
+ *       ├── assets/nsis.zip 内置 → 解压到缓存目录
+ *       └── 都没有 → 跳过差分生成，继续全量构建
+ *      ↓
+ *    2. 扫描历史安装器 (delta-releases/ 目录)
+ *       ├── 根据环境 (test/stage/prod) 过滤文件名
+ *       ├── 提取版本号 (正则 \d+\.\d+\.\d+)
+ *       └── 过滤掉当前版本 (自己不能和自己比)
+ *      ↓
+ *    3. 同步到构建缓存 (~/.electron-delta/data/)
+ *       └── 首次下载或从 delta-releases/ 拷贝
+ *      ↓
+ *    4. 生成差量补丁 (createAllDeltas)
+ *       ├── 7z 解压新旧安装器 → 提取 exe
+ *       ├── hdiffz 生成 .delta 差分文件
+ *       ├── makensis 打包为 -delta.exe 安装器
+ *       └── SHA256 校验 → 写入 delta-win.json
+ *      ↓
+ *    5. 存档当前安装器
+ *       └── out/ → delta-releases/ (供下次构建使用)
+ *       └── 清理同环境旧版本
+ *
+ * ============================================================
+ * 目录结构
+ * ============================================================
+ *
+ *   项目根/
+ *   ├── delta-releases/              ← 历史安装器 (手动放入或自动存档)
+ *   │   └── MyApp Setup 1.0.15-test.exe
+ *   ├── out/                         ← electron-builder 输出
+ *   │   ├── MyApp Setup 1.0.16-test.exe
+ *   │   └── 1.0.16-win-deltas/       ← 差量产物
+ *   │       ├── delta-win.json
+ *   │       └── MyApp-1.0.15-to-1.0.16-delta.exe
+ *   └── cmd/
+ *       └── builder-test.json
+ *
+ *   全局缓存:
+ *   ~/.electron-delta/
+ *   ├── data/                        ← 下载/拷贝的安装器缓存
+ *   └── deltas/                      ← .delta 文件缓存
+ *
+ *   %APPDATA%/electron-delta-bins/   ← NSIS 编译器 (makensis.exe)
+ *   └── nsis-3.0.5.0/Bin/makensis.exe
+ *
+ * ============================================================
+ * 环境检测
+ * ============================================================
+ *
+ *   从 process.env.npm_lifecycle_event 推断:
+ *     npm run build:test  → 只匹配 *-test.exe
+ *     npm run build:stage → 只匹配 *-stage.exe
+ *     npm run build:prod  → 只匹配 *-prod.exe
+ *     无法识别            → 匹配所有 .exe
+ *
+ * ============================================================
+ * 使用方式
+ * ============================================================
+ *
+ *   零配置: "afterAllArtifactBuild": "@jake-gao/delta-updater/builder"
+ *   自定义: "afterAllArtifactBuild": "./electron-delta.hook.js"
+ *           module.exports = createHook({ releasesDir: "my-releases", ... })
  */
+
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -94,11 +158,13 @@ const OK = (msg: string) => console.log(`\x1b[32m  ✓\x1b[0m ${msg}`);
 const WARN = (msg: string) => console.log(`\x1b[33m  ⚠\x1b[0m ${msg}`);
 const INFO = (msg: string) => console.log(`  • ${msg}`);
 
+/** 从文件名提取 semver 版本号, 例 "MyApp Setup 1.0.15-test.exe" → "1.0.15" */
 function extractVersion(fileName: string): string | null {
   const match = fileName.match(/(\d+\.\d+\.\d+)/);
   return match ? match[1] : null;
 }
 
+/** 默认环境检测: 从 npm_lifecycle_event 推断 test/stage/prod */
 function defaultDetectEnvironment(): string | null {
   const npmScript = process.env.npm_lifecycle_event || "";
   if (npmScript.includes("prod")) return "prod";
@@ -107,6 +173,7 @@ function defaultDetectEnvironment(): string | null {
   return null;
 }
 
+/** 根据环境过滤安装器文件名: test → *-test.exe, stage → *-stage.exe, null → 全部 */
 function matchEnvironment(fileName: string, env: string | null): boolean {
   if (!env) return true;
   const baseName = path.basename(fileName, path.extname(fileName));
@@ -120,6 +187,7 @@ function matchEnvironment(fileName: string, env: string | null): boolean {
 // Config resolution
 // ============================================================
 
+/** 合并用户配置 + 环境变量 + 默认值 (优先级: 用户 > 环境变量 > 默认) */
 function resolveConfig(userConfig?: DeltaBuilderConfig): Required<Omit<DeltaBuilderConfig, "sign" | "detectEnvironment">> & { sign: (f: string) => Promise<void>; detectEnvironment: () => string | null } {
   return {
     releasesDir: userConfig?.releasesDir || process.env.DELTA_RELEASES_DIR || DEFAULTS.releasesDir,
@@ -142,6 +210,12 @@ interface ReleaseEntry {
   url: string;
 }
 
+/**
+ * 扫描历史安装器目录 (delta-releases/)
+ * - 按环境过滤文件
+ * - 提取版本号
+ * - 返回 { version, url (文件名) }
+ */
 function scanReleases(projectRoot: string, config: ReturnType<typeof resolveConfig>): ReleaseEntry[] {
   const localDir = path.join(projectRoot, config.releasesDir);
   const env = config.detectEnvironment();
@@ -191,6 +265,11 @@ function scanReleases(projectRoot: string, config: ReturnType<typeof resolveConf
 // Cache sync
 // ============================================================
 
+/**
+ * 将 delta-releases/ 中的安装器同步到构建缓存 (~/.electron-delta/data/)
+ * 如果缓存中已有，跳过；否则从本地目录拷贝
+ * 后续 createAllDeltas 会从缓存读取安装器
+ */
 function syncLocalReleasesToCache(
   projectRoot: string,
   config: ReturnType<typeof resolveConfig>,
@@ -227,6 +306,18 @@ function syncLocalReleasesToCache(
 // NSIS check
 // ============================================================
 
+/**
+ * 检查 NSIS 编译器 (makensis.exe) 是否可用
+ *
+ * 查找优先级:
+ *   1. %APPDATA%/electron-delta-bins/nsis-3.0.5.0/Bin/makensis.exe (已缓存)
+ *   2. dist/builder/assets/nsis.zip (包内置, 最优先的新来源)
+ *   3. 用户指定的本地路径 (nsisZipPath)
+ *   4. 缓存目录中的 nsis.zip
+ *
+ * 如果都不存在: 打印错误提示，返回 false → 跳过差量构建
+ * 如果 zip 存在但未解压: 用 PowerShell 解压到缓存目录 → 返回 true
+ */
 function checkNSIS(projectRoot: string, config: ReturnType<typeof resolveConfig>): boolean {
   const makeNSISPath = path.join(config.nsisBinsDir, "nsis-3.0.5.0", "Bin", "makensis.exe");
 
@@ -251,7 +342,7 @@ function checkNSIS(projectRoot: string, config: ReturnType<typeof resolveConfig>
     return false;
   }
 
-  // Validate zip
+  // Validate zip integrity
   try {
     execSync(
       `powershell -command "Add-Type -A 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::OpenRead('${sourceZip}').Dispose()"`,
@@ -263,7 +354,7 @@ function checkNSIS(projectRoot: string, config: ReturnType<typeof resolveConfig>
     return false;
   }
 
-  // Extract to cache
+  // Extract to cache directory
   const sourceLabel = sourceZip === bundledZip ? "包内置" : "本地";
   INFO(`正在解压 nsis.zip (${sourceLabel}) → ${config.nsisBinsDir} ...`);
   fs.mkdirSync(config.nsisBinsDir, { recursive: true });
@@ -289,6 +380,12 @@ function checkNSIS(projectRoot: string, config: ReturnType<typeof resolveConfig>
 // Archive
 // ============================================================
 
+/**
+ * 将本次构建的安装器从 out/ 存档到 delta-releases/
+ * 供下次构建作为"历史版本"生成差量补丁
+ *
+ * 同时清理同环境的旧版本 (仅保留当前版本)
+ */
 function archiveInstaller(
   projectRoot: string,
   config: ReturnType<typeof resolveConfig>,
@@ -322,7 +419,7 @@ function archiveInstaller(
     OK(`安装器已存档: ${config.releasesDir}/${file}  (${sizeMB} MB)`);
   }
 
-  // Keep only current version
+  // Keep only current version in same environment
   const staleFiles = fs.readdirSync(prevDir).filter(
     (f) => f.endsWith(".exe") && matchEnvironment(f, env) && extractVersion(f) !== latestVersion
   );
@@ -369,20 +466,21 @@ export function createHook(userConfig?: DeltaBuilderConfig) {
     const env = config.detectEnvironment();
 
     console.log("\n╔══════════════════════════════════════╗");
-    console.log("║   delta-updater 增量更新构建          ║");
+    console.log("║    delta-updater 增量更新构建        ║");
     console.log("╚══════════════════════════════════════╝");
 
     STEP(`产品: ${options.productName}  版本: ${options.latestVersion}  环境: ${env || "未知"}`);
 
-    // 0. NSIS
+    // ---- 0. NSIS 检查 ----
     if (!checkNSIS(projectRoot, config)) {
       WARN("跳过增量差分构建（NSIS 不可用），全量安装器仍会正常生成");
       archiveInstaller(projectRoot, config, options.latestVersion);
       return [];
     }
 
-    // 1. Scan
+    // ---- 1. 扫描历史版本 ----
     let previousReleases = await options.getPreviousReleases();
+    // 过滤掉当前版本 (自己不能和自己比)
     previousReleases = previousReleases.filter(
       (r: ReleaseEntry) => r.version !== options.latestVersion
     );
@@ -397,12 +495,13 @@ export function createHook(userConfig?: DeltaBuilderConfig) {
 
     INFO(`共检测到 ${previousReleases.length} 个历史版本，将逐一生成差分补丁`);
 
-    // 2. Sync cache
+    // ---- 2. 同步缓存 ----
     STEP("检查缓存...");
     syncLocalReleasesToCache(projectRoot, config, previousReleases);
 
-    // 3. Build
+    // ---- 3. 生成差量补丁 ----
     STEP("开始生成增量差分补丁...");
+    // 静默构建过程中的底层日志 (hdiffz/makensis 输出大量信息)
     const noop = () => {};
     const originals = {
       log: console.log, info: console.info, warn: console.warn,
@@ -423,6 +522,7 @@ export function createHook(userConfig?: DeltaBuilderConfig) {
       OK(`差分补丁生成完成，共 ${deltaInstallerFiles.length} 个文件`);
     }
 
+    // ---- 4. 存档本次安装器 ----
     archiveInstaller(projectRoot, config, options.latestVersion);
     return deltaInstallerFiles;
   };
@@ -432,4 +532,5 @@ export function createHook(userConfig?: DeltaBuilderConfig) {
 // Default export (zero-config)
 // ============================================================
 
+/** 零配置导出: 在 builder 配置中直接引用包名即可 */
 export default createHook();

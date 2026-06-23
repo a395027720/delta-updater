@@ -1,9 +1,52 @@
+/**
+ * Splash 闪屏窗口 — 更新进度展示
+ *
+ * ============================================================
+ * 架构
+ * ============================================================
+ *
+ *   DeltaUpdater (主进程)
+ *     ├── getStartURL(logo?)  ← 生成 HTML (内嵌 data URL)
+ *     ├── getWindow()         ← 创建 BrowserWindow
+ *     │       preload: preload.js (IPC 桥接)
+ *     └── dispatchEvent()     ← 通过 IPC 推送状态到闪屏
+ *           ↓
+ *   splash HTML (渲染进程, sandbox + contextIsolation)
+ *     ├── 监听 custom DOM events → 更新 UI
+ *     └── preload.js 桥: 主进程 IPC → DOM CustomEvent
+ *
+ * ============================================================
+ * 窗口特性
+ * ============================================================
+ *
+ *   - 无框 (frame: false), 置顶 (alwaysOnTop), 不可拖动 (movable: false)
+ *   - 360×150, 深色背景 (#1b1e2e)
+ *   - sandbox + contextIsolation (Electron 安全最佳实践)
+ *   - HTML 通过 data URL 加载，无需文件系统访问
+ *
+ * ============================================================
+ * Logo 支持
+ * ============================================================
+ *
+ *   splashLogo 参数支持三种格式:
+ *   1. 文字: "MyApp" → 直接渲染文字
+ *   2. 图片路径: "./logo.png" → 转 base64 data URL 嵌入 (sandbox 环境无法访问本地文件)
+ *   3. SVG 字符串: "<svg>...</svg>" → 直接注入 HTML
+ *   4. 不传: 默认下载图标 SVG
+ */
+
 import { BrowserWindow } from "electron";
 import fs from "fs";
 import path from "path";
 
+/** 主进程 → 渲染进程 IPC channel */
 const MAIN_MESSAGE = "@jake-gao/delta-updater:main";
 
+/**
+ * 内嵌闪屏 HTML 模板
+ * ✅ sandbox 兼容: CSS/JS 全部内联，无外部资源
+ * ✅ 进度条动画 + 动态状态文字 + 下载详情
+ */
 const splashHtml = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -131,6 +174,7 @@ const splashHtml = `<!DOCTYPE html>
       progressBar.style.transform = 'scaleX(' + (pct / 100) + ')';
     }
 
+    // 监听主进程通过 IPC → preload → DOM CustomEvent 推送的事件
     window.addEventListener(MAIN_MESSAGE, function (event) {
       var data = event.detail;
       var eventName = data.eventName;
@@ -170,6 +214,7 @@ const splashHtml = `<!DOCTYPE html>
 </body>
 </html>`;
 
+/** 创建闪屏 BrowserWindow */
 export function getWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 360,
@@ -200,6 +245,7 @@ export function getWindow(): BrowserWindow {
   return win;
 }
 
+/** 判断 logo 是否为图片路径 (本地文件/远程 URL) */
 function isImagePath(logo: string): boolean {
   return (
     /\.(png|ico|svg|jpg|jpeg|gif)$/i.test(logo) ||
@@ -218,11 +264,11 @@ const MIME_MAP: Record<string, string> = {
 };
 
 /**
- * 将本地图片路径转为 base64 data URL，用于在 sandbox 环境中嵌入图片。
- * 如果已是 data: / http 格式或转换失败，返回 null。
+ * 将本地图片路径转为 base64 data URL
+ * 原因: sandbox 窗口中无法通过 file:// 访问本地图片
+ * 返回 null 表示转换失败 (文件不存在等)
  */
 function toDataURL(logo: string): string | null {
-  // 已经是 data URL 或远程 URL，直接使用
   if (logo.startsWith("data:") || logo.startsWith("http")) {
     return logo;
   }
@@ -240,8 +286,15 @@ function toDataURL(logo: string): string | null {
   }
 }
 
+/**
+ * 生成闪屏 HTML 的 data URL
+ *
+ * @param logo - 可选 logo
+ *   - 不传: 默认下载图标 SVG
+ *   - 图片路径: 转 base64 → <img> 标签
+ *   - 文字/SVG: 直接注入 HTML
+ */
 export function getStartURL(logo?: string): string {
-  // 默认：下载/更新 SVG 图标
   const defaultSVG =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -259,6 +312,7 @@ export function getStartURL(logo?: string): string {
         logoContent = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:8px" />`;
       }
     } else {
+      // 纯文字或 SVG 字符串直接注入
       logoContent = logo;
     }
   }
@@ -267,6 +321,16 @@ export function getStartURL(logo?: string): string {
   return "data:text/html;charset=utf-8," + encodeURIComponent(html);
 }
 
+/**
+ * 通过 IPC 向闪屏窗口推送事件
+ *
+ * 通信链路:
+ *   主进程 dispatchEvent()
+ *     → webContents.send(MAIN_MESSAGE, { eventName, payload })
+ *       → preload.js: ipcRenderer.on(MAIN_MESSAGE)
+ *         → window.dispatchEvent(CustomEvent)
+ *           → splash HTML 中 window.addEventListener(MAIN_MESSAGE) 处理
+ */
 export function dispatchEvent(
   updaterWindow: BrowserWindow | null,
   eventName: string,
