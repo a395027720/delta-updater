@@ -61,25 +61,42 @@ export const downloadFileIfNotExists = async (
 };
 
 /**
- * Extract 7z files using 7z binary.
- * On Windows, prefers built-in tar (Windows 10 1803+), falls back to 7z.
+ * Extract NSIS installer using 7z.
+ * Uses electron-builder's built-in 7za (SZA_PATH) or system 7z.
  */
 export const extract7zip = (
   archivePath: string,
   dest: string
 ): void => {
   fs.ensureDirSync(dest);
+
+  // electron-builder sets SZA_PATH to its bundled 7za binary
+  const szaPath = process.env.SZA_PATH;
+
   try {
-    // Use 7z if available, otherwise use Expand-Archive on Windows
-    execSync(`7z x "${archivePath}" -o"${dest}" -y`, {
-      stdio: "pipe",
-      timeout: 300000,
-    });
+    if (szaPath && fs.existsSync(szaPath)) {
+      execSync(`"${szaPath}" x "${archivePath}" -o"${dest}" -y`, {
+        stdio: "pipe",
+        timeout: 300000,
+      });
+    } else {
+      execSync(`7z x "${archivePath}" -o"${dest}" -y`, {
+        stdio: "pipe",
+        timeout: 300000,
+      });
+    }
   } catch {
-    // Fallback to PowerShell Expand-Archive for .zip files
-    execSync(
-      `powershell -command "Expand-Archive -Path '${archivePath}' -DestinationPath '${dest}' -Force"`,
-      { stdio: "pipe", timeout: 300000 }
-    );
+    // Last resort: try system 7z or fail with clear message
+    try {
+      execSync(`7za x "${archivePath}" -o"${dest}" -y`, {
+        stdio: "pipe",
+        timeout: 300000,
+      });
+    } catch {
+      throw new Error(
+        `7z not found. Install 7-Zip or set SZA_PATH.\n` +
+        `Tried to extract: ${archivePath}`
+      );
+    }
   }
 };

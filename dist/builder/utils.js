@@ -72,16 +72,31 @@ const downloadFileIfNotExists = async (url, dest) => {
 };
 const extract7zip = (archivePath, dest) => {
   import_fs_extra.default.ensureDirSync(dest);
+  const szaPath = process.env.SZA_PATH;
   try {
-    (0, import_child_process.execSync)(`7z x "${archivePath}" -o"${dest}" -y`, {
-      stdio: "pipe",
-      timeout: 3e5
-    });
+    if (szaPath && import_fs_extra.default.existsSync(szaPath)) {
+      (0, import_child_process.execSync)(`"${szaPath}" x "${archivePath}" -o"${dest}" -y`, {
+        stdio: "pipe",
+        timeout: 3e5
+      });
+    } else {
+      (0, import_child_process.execSync)(`7z x "${archivePath}" -o"${dest}" -y`, {
+        stdio: "pipe",
+        timeout: 3e5
+      });
+    }
   } catch {
-    (0, import_child_process.execSync)(
-      `powershell -command "Expand-Archive -Path '${archivePath}' -DestinationPath '${dest}' -Force"`,
-      { stdio: "pipe", timeout: 3e5 }
-    );
+    try {
+      (0, import_child_process.execSync)(`7za x "${archivePath}" -o"${dest}" -y`, {
+        stdio: "pipe",
+        timeout: 3e5
+      });
+    } catch {
+      throw new Error(
+        `7z not found. Install 7-Zip or set SZA_PATH.
+Tried to extract: ${archivePath}`
+      );
+    }
   }
 };
 // Annotate the CommonJS export names for ESM import in node:
