@@ -1,8 +1,8 @@
-const { spawnSync } = require('child_process');
+const path = require('path');
 const fs = require('fs-extra');
 const crypto = require('crypto');
 const fetch = require('cross-fetch');
-const path = require('path');
+const { spawnSync } = require('child_process');
 
 function safeSpawn(exe, args, options) {
   return new Promise((resolve, reject) => {
@@ -30,14 +30,14 @@ const downloadFileIfNotExists = async (url, filePath) => {
 
 const extract7zip = (archivePath, dest) => {
   fs.ensureDirSync(dest);
-  const sza = path.join(__dirname, "..", "assets", "7za.exe");
-  spawnSync(sza, ["x", archivePath, `-o${dest}`, "-y"], {
-    stdio: "pipe",
+  const sza = path.join(__dirname, '..', 'assets', '7za.exe');
+  spawnSync(sza, ['x', archivePath, `-o${dest}`, '-y'], {
+    stdio: 'pipe',
     timeout: 300000,
   });
 };
 
-const removeExt = (str) => str.replace(/\.[^/.]+$/, "");
+const removeExt = (str) => str.replace(/\.[^/.]+$/, '');
 
 const computeSHA256 = (filePath) => {
   const fileBuffer = fs.readFileSync(filePath);

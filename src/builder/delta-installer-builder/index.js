@@ -9,13 +9,9 @@ const defaultOptions = {
 
 class DeltaInstallerBuilder {
   constructor(options) {
-    this.options = {
-      ...defaultOptions,
-      ...options,
-    };
-
+    this.options = { ...defaultOptions, ...options };
     this.defines = {
-      APP_GUID: this.options.APP_GUID,
+      APP_GUID: this.options.APP_GUID || "",
       PRODUCT_NAME: this.options.PRODUCT_NAME,
       PROCESS_NAME: this.options.PROCESS_NAME || this.options.PRODUCT_NAME,
     };
@@ -31,20 +27,14 @@ class DeltaInstallerBuilder {
     const makeNSISPath = path.join(nsisRootPath, "Bin", "makensis.exe");
 
     if (fs.existsSync(makeNSISPath)) {
-      this.logger.log("Cache exists: ", makeNSISPath);
       return { makeNSISPath, nsisRootPath };
     }
 
     await fs.ensureDir(deltaBinsDir);
-
-    this.logger.log("Start downloading from", this.options.nsisURL);
-
     const filePath = await downloadFile(
       this.options.nsisURL,
       path.join(deltaBinsDir, "nsis.zip")
     );
-
-    this.logger.log("Downloaded ", filePath);
     await extract7zip(filePath, deltaBinsDir);
     return { makeNSISPath, nsisRootPath };
   }
@@ -56,8 +46,7 @@ class DeltaInstallerBuilder {
   getNSISArgs() {
     const args = [];
     Object.keys(this.defines).forEach((key) => {
-      const value = this.defines[key];
-      args.push(`-D${key}=${value}`);
+      args.push(`-D${key}=${this.defines[key]}`);
     });
     return args;
   }
@@ -82,21 +71,11 @@ class DeltaInstallerBuilder {
     }
   }
 
-  async build({
-    installerOutputPath,
-    deltaFilePath,
-    deltaFileName,
-    // newAppSize,
-    // newAppVersion,
-    productIconPath,
-  }) {
+  async build({ installerOutputPath, deltaFilePath, deltaFileName, productIconPath }) {
     this.installerNSIPath = DeltaInstallerBuilder.getNSISScript();
-
     this.defines.INSTALLER_OUTPUT_PATH = installerOutputPath;
     this.defines.DELTA_FILE_PATH = deltaFilePath;
     this.defines.DELTA_FILE_NAME = deltaFileName;
-    // this.defines.NEW_APP_SIZE = newAppSize || 67540;
-    // this.defines.NEW_APP_VERSION = newAppVersion;
     this.defines.PRODUCT_ICON_PATH = productIconPath;
     let created = false;
     try {
@@ -104,11 +83,7 @@ class DeltaInstallerBuilder {
     } catch (err) {
       console.error(err);
     }
-    if (!created) {
-      return null;
-    }
-
-    this.logger.log("EXE created: ", installerOutputPath);
+    if (!created) return null;
     return installerOutputPath;
   }
 }
