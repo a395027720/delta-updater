@@ -531,9 +531,9 @@ class DeltaUpdater extends EventEmitter {
       this.boundOnQuit = null;
     }
 
-    // Spawn delta.exe asynchronously and exit immediately.
-    // This avoids the old process lingering while delta.exe runs,
-    // which would cause two instances when delta.exe restarts the app.
+    // Spawn delta.exe asynchronously, then exit.
+    // Give the child a moment to initialize before exiting,
+    // so delta.exe can apply the patch and restart the app.
     const child = spawn(deltaPath, [
       `/APPPATH="${this.appPath}"`,
       '/RESTART="1"',
@@ -544,7 +544,8 @@ class DeltaUpdater extends EventEmitter {
     child.unref();
 
     (app as any).isQuitting = true;
-    app.exit(0);
+    // Brief delay ensures delta.exe has started before we exit
+    setTimeout(() => process.exit(0), 1000);
   }
 }
 
