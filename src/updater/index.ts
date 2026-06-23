@@ -11,7 +11,7 @@ import crypto from 'crypto';
 import fs from 'fs-extra';
 import fetch from 'cross-fetch';
 import semver from 'semver';
-import { spawn } from 'child_process';
+import { execSync } from 'child_process';
 import yaml from 'yaml';
 
 import { downloadFile, niceBytes } from './download';
@@ -280,26 +280,14 @@ class DeltaUpdater extends EventEmitter {
       this.logger.info('[Updater] On Quit ', this.autoUpdateInfo);
       if (this.autoUpdateInfo.delta) {
         this.logger.info('[Updater] 退出时应用增量更新');
-        const child = spawn(this.autoUpdateInfo.deltaPath, [
-          `/APPPATH="${this.appPath}"`,
-          '/RESTART="0"',
-        ], {
-          stdio: ['ignore', 'ignore', 'pipe'],
-          detached: true,
-        });
-        child.stderr?.on('data', (chunk: Buffer) => {
-          const msg = chunk.toString().trim();
-          if (msg) {
-            this.logger.error('[Updater] delta.exe(onQuit) stderr: ', msg);
-          }
-        });
-        child.on('error', (err) => {
-          this.logger.error('[Updater] delta.exe(onQuit) 启动失败: ', err);
-        });
-        child.on('close', (code) => {
-          this.logger.info(`[Updater] delta.exe(onQuit) 已退出, code=${code}`);
-        });
-        child.unref();
+        try {
+          execSync(
+            `${this.autoUpdateInfo.deltaPath} /APPPATH="${this.appPath}" /RESTART="0"`,
+            { stdio: 'ignore' },
+          );
+        } catch (err) {
+          this.logger.error('[Updater] delta.exe(onQuit) 执行失败: ', err);
+        }
       } else {
         await this.applyUpdate(this.autoUpdateInfo.version, false);
       }
@@ -388,8 +376,6 @@ class DeltaUpdater extends EventEmitter {
     return Promise.race([updateCheckPromise, timeoutPromise])
       .then(() => {
         this.logger.info('[Updater] 启动完成');
-        // 无更新时清理旧增量补丁，避免磁盘占用累积
-        this.clearDeltaCache();
         if (
           splashScreen &&
           this.updaterWindow &&
@@ -572,7 +558,7 @@ class DeltaUpdater extends EventEmitter {
     });
 
     // 必须在 ensureSafeQuitAndInstall 之前移除 quit 监听器，
-    // 否则关闭窗口时可能触发 onQuit，导致重复 spawn delta.exe
+    // 否则关闭窗口时可能触发 onQuit，导致重复执行 delta.exe
     if (this.boundOnQuit) {
       app.removeListener('quit', this.boundOnQuit);
       this.boundOnQuit = null;
@@ -580,62 +566,23 @@ class DeltaUpdater extends EventEmitter {
 
     this.ensureSafeQuitAndInstall();
 
-    let spawnFailed = false;
-    let stderrLogs = '';
-
     try {
-      const child = spawn(
+      // 使用 execSync 阻塞主进程：
+      // 1) 主进程保持存活 → 不会因 app.exit() 连累 delta.exe 被 Windows Job Object 终止
+      // 2) NSIS 安装器内部 _KillProcess 精确杀主程序 → 释放文件锁 → hpatchz 完整打补丁 → 重启
+      this.logger.log(
         deltaPath,
         [`/APPPATH="${this.appPath}"`, '/RESTART="1"'],
-        { stdio: ['ignore', 'ignore', 'pipe'], detached: true },
       );
-
-      child.stderr?.on('data', (chunk: Buffer) => {
-        const msg = chunk.toString().trim();
-        if (msg) {
-          stderrLogs += msg + '\n';
-          this.logger.error('[Updater] delta.exe stderr: ', msg);
-        }
-      });
-
-      child.on('error', (err) => {
-        spawnFailed = true;
-        this.logger.error('[Updater] 增量安装器启动失败: ', err);
-      });
-
-      child.on('close', (code) => {
-        this.logger.info(`[Updater] delta.exe 已退出, code=${code}`);
-        if (stderrLogs) {
-          this.logger.info('[Updater] delta.exe 完整日志:\n', stderrLogs);
-        }
-      });
-
-      child.unref();
-
-      // 给子进程 300ms 窗口期检测启动是否成功，
-      // 若失败则回退到全量更新
-      await new Promise<void>((resolve) => setTimeout(resolve, 300));
-
-      if (spawnFailed) {
-        this.logger.info('[Updater] 增量安装器启动失败，回退全量更新');
-        // 重新注册 quit 监听器
-        this.boundOnQuit = this.onQuit.bind(this);
-        app.on('quit', this.boundOnQuit);
-        await this.applyUpdate(version, true);
-        return;
-      }
+      execSync(
+        `${deltaPath} /APPPATH="${this.appPath}" /RESTART="1"`,
+        { stdio: 'ignore' },
+      );
+      (app as any).isQuitting = true;
+      app.quit();
     } catch (err) {
-      // spawn 同步抛异常（如文件不存在），也回退全量更新
-      this.logger.error('[Updater] 增量更新异常，回退全量更新: ', err);
-      this.boundOnQuit = this.onQuit.bind(this);
-      app.on('quit', this.boundOnQuit);
-      await this.applyUpdate(version, true);
-      return;
+      this.logger.error('[Updater] 增量更新执行失败: ', err);
     }
-
-    // 使用 app.exit() 确保 Electron 正确退出，释放文件锁给 delta.exe
-    (app as any).isQuitting = true;
-    app.exit(0);
   }
 }
 
