@@ -1,10 +1,6 @@
-/* eslint-disable no-nested-ternary */
 const fs = require("fs-extra");
 const path = require("path");
-const envPaths = require("env-paths");
-const { extract7zip } = require("../utils");
-
-const { downloadFile, safeSpawn } = require("../utils");
+const { extract7zip, downloadFile, safeSpawn } = require("../utils");
 
 const defaultOptions = {
   logger: console,
@@ -30,21 +26,9 @@ class DeltaInstallerBuilder {
   }
 
   async getNSISPath() {
-    const paths = envPaths("electron-delta-bins");
-    const deltaBinsDir =
-      process.platform === "win32"
-        ? path.join(process.env.APPDATA, "electron-delta-bins")
-        : paths.data;
+    const deltaBinsDir = path.join(process.env.APPDATA, "electron-delta-bins");
     const nsisRootPath = path.join(deltaBinsDir, "nsis-3.0.5.0");
-    const makeNSISPath = path.join(
-      nsisRootPath,
-      process.platform === "darwin"
-        ? "mac"
-        : process.platform === "win32"
-        ? "Bin"
-        : "linux",
-      process.platform === "win32" ? "makensis.exe" : "makensis"
-    );
+    const makeNSISPath = path.join(nsisRootPath, "Bin", "makensis.exe");
 
     if (fs.existsSync(makeNSISPath)) {
       this.logger.log("Cache exists: ", makeNSISPath);
