@@ -807,15 +807,15 @@ class DeltaUpdater extends EventEmitter {
   /**
    * 执行差量更新
    *
-   * 1. 写入失败记录 (isDelta=true)  ← 先写: 万一失败下次能检测到
-   * 2. 移除 quit 监听器              ← 防重复: 关闭窗口触发 onQuit 会再次执行 delta.exe
+   * 1. 写入失败记录 (isDelta=true)
+   * 2. 移除 quit 监听器，防止重复执行
    * 3. 关闭所有窗口
-   * 4. execSync 启动 delta.exe 并阻塞等待
-   *    - NSIS 内部: _KillProcess 杀主进程 → hpatchz 打补丁 → 重启应用
-   *    - 阻塞原因: 保持主进程存活，避免 Windows Job Object 因主进程退出而连累 delta.exe
-   *    - 路径加引号: 防止路径含空格时 CMD 解析错误
-   * 5. execSync 返回 → app.quit()
-   * 6. execSync 失败 → 记录日志 + app.quit()
+   * 4. 通过 PowerShell Start-Process -Verb RunAs 启动 delta.exe
+   *    - execSync 无法触发 UAC → 改用 ShellExecute + runas
+   *    - 用户同意 UAC 后以管理员权限运行 → hpatchz 可写 Program Files
+   *    - -Wait 阻塞等待，保持主进程存活
+   * 5. 成功后 app.quit()
+   * 6. 失败后记录日志 + app.quit()
    */
   async applyDeltaUpdate(deltaPath: string, version: string) {
     await this.writeAutoUpdateDetails({
