@@ -22,7 +22,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jq/delta-updater.git"
+    "url": "git+https://github.com/a395027720/delta-updater.git"
   },
   "devDependencies": {
     "esbuild": "^0.21.5",
