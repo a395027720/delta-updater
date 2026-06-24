@@ -1,50 +1,35 @@
 {
   "name": "@jake-gao/delta-updater",
-  "version": "1.0.21",
-  "description": "HDiffPatch-based delta updater for Electron apps (Windows only), vendored from @electron-delta",
-  "main": "dist/updater/index.js",
-  "exports": {
-    ".": "./dist/updater/index.js",
-    "./builder": "./dist/builder/hook.js",
-    "./builder/hook": "./dist/builder/hook.js"
-  },
-  "files": [
-    "dist/",
-    "builder.js"
-  ],
+  "version": "1.0.22",
+  "description": "True delta updater for windows",
+  "main": "src/index.js",
   "scripts": {
-    "build": "node build.js",
-    "prepublishOnly": "npm run build"
+    "test": "electron splash-test/main.js",
+    "cargo": "cd src/mac-updater && cargo build"
   },
   "keywords": [
-    "electron",
-    "delta-update",
-    "hdiffpatch",
-    "nsis"
+    "electron-delta-updater",
+    "electron-delta",
+    "delta-updates",
+    "auto-updater"
   ],
-  "author": "高建强",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/a395027720/delta-updater.git"
+  "author": "Jake Gao",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/a395027720/delta-updater/issues"
   },
-  "devDependencies": {
-    "esbuild": "^0.21.5",
-    "typescript": "^5.4.2"
-  },
+  "homepage": "https://github.com/a395027720/delta-updater#readme",
   "dependencies": {
     "cross-fetch": "^3.1.5",
-    "fs-extra": "^10.1.0",
-    "semver": "^7.5.4",
-    "yaml": "^2.4.0"
+    "electron-updater": "^5.0.1",
+    "fs-extra": "^10.0.1",
+    "semver": "^7.3.7",
+    "yaml": "^2.0.1"
   },
-  "peerDependencies": {
-    "electron": ">=22.0.0",
-    "electron-updater": ">=6.0.0"
-  },
-  "peerDependenciesMeta": {
-    "electron-updater": {
-      "optional": true
-    }
+  "devDependencies": {
+    "electron": "*",
+    "eslint": "^8.13.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.26.0"
   }
 }
