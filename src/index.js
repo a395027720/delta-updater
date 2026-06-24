@@ -142,26 +142,25 @@ class DeltaUpdater extends EventEmitter {
   }
 
   checkForUpdates(resolve, reject) {
-    this.logger.log("[Updater] Checking for updates...");
+    this.logger.info("[Updater] Checking for updates...");
     if (
       !this.hostURL &&
       this.updateConfig &&
       this.updateConfig.provider === "github"
     ) {
-      // special case for github, we need to get the latest release as delta-win/mac.json is
-      // hosted at the root of the new release eg:
+      // github 特殊处理：需要获取最新版本，因为 delta-win/mac.json 托管在
+      // 新版本根目录下，例如：
       // https://github.com/${owner}/${repo}/releases/download/${latestReleaseTagName}/delta-{win/mac}.json
 
       getGithubFeedURL(this.updateConfig)
         .then((hostURL) => {
-          this.logger.log("[Updater] github hostURL = ", hostURL);
+          this.logger.info("[Updater] github hostURL = ", hostURL);
           this.hostURL = newBaseUrl(hostURL);
           this.autoUpdater.checkForUpdates();
         })
         .catch((err) => {
-          // when update check fails the updaterWindow needs to be close,
-          // loads the app's current version.
-          this.logger.error("[Updater] check for updates failed.");
+          // 当更新检查失败时，需要关闭 updaterWindow 并加载应用的当前版本
+          this.logger.error("[Updater] 检查更新失败");
           dispatchEvent(this.updaterWindow, "error", err);
           reject(err);
         });
@@ -219,7 +218,7 @@ class DeltaUpdater extends EventEmitter {
 
   async setFeedURL(feedURL) {
     try {
-      this.logger.log(
+      this.logger.info(
         "[Updater] Setting Feed URL for native updater: ",
         feedURL,
       );
@@ -243,10 +242,10 @@ class DeltaUpdater extends EventEmitter {
     this.autoUpdater.removeAllListeners();
     this.pollForUpdates(resolve, reject);
 
-    this.logger.log("[Updater] Attaching listeners");
+    this.logger.info("[Updater] Attaching listeners");
 
     this.autoUpdater.on("checking-for-update", () => {
-      this.logger.log("[Updater] Checking for update");
+      this.logger.info("[Updater] Checking for update");
       dispatchEvent(this.updaterWindow, "checking-for-update");
     });
 
@@ -314,7 +313,7 @@ class DeltaUpdater extends EventEmitter {
       if (this.autoUpdateInfo.delta) {
         if (process.platform === "win32") {
           try {
-            this.logger.log(this.autoUpdateInfo.deltaPath, [
+            this.logger.info(this.autoUpdateInfo.deltaPath, [
               `/APPPATH="${this.appPath}"`,
               '/RESTART="0"',
             ]);
@@ -612,7 +611,7 @@ class DeltaUpdater extends EventEmitter {
           this.hpatchzPath,
         ]).unref();
       } else {
-        this.logger.log(deltaPath, [
+        this.logger.info(deltaPath, [
           `/APPPATH="${this.appPath}"`,
           '/RESTART="1"',
         ]);
