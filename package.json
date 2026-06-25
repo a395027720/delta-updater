@@ -1,6 +1,6 @@
 {
   "name": "@jake-gao/delta-updater",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "True delta updater for windows",
   "main": "src/index.js",
   "scripts": {
