@@ -72,7 +72,7 @@ class DeltaUpdater extends EventEmitter {
       this.prepareUpdater();
       this.appPath = stripTrailingSlash(path.dirname(app.getPath("exe")));
       this.appName = getAppName();
-      this.logger.info("[更新器] 应用路径 = ", this.appPath);
+      this.logger.info("[Updater] 应用路径 = ", this.appPath);
     }
   }
 
@@ -99,7 +99,7 @@ class DeltaUpdater extends EventEmitter {
           hostURL = await this.computeHostURL();
       }
     } catch (e) {
-      this.logger.error("[更新器] 猜测 host URL 错误 ", e);
+      this.logger.error("[Updater] 猜测 host URL 错误 ", e);
     }
     if (!hostURL) {
       return null;
@@ -117,7 +117,7 @@ class DeltaUpdater extends EventEmitter {
     const channel = getChannel();
     if (!channel) return;
 
-    this.logger.info("[更新器] 频道 = ", channel);
+    this.logger.info("[Updater] 频道 = ", channel);
     this.autoUpdater.channel = channel;
     this.autoUpdater.logger = this.logger;
 
@@ -146,7 +146,7 @@ class DeltaUpdater extends EventEmitter {
   }
 
   checkForUpdates(resolve, reject) {
-    this.logger.info("[更新器] 正在检查更新...");
+    this.logger.info("[Updater] 正在检查更新...");
     if (
       !this.hostURL &&
       this.updateConfig &&
@@ -158,13 +158,13 @@ class DeltaUpdater extends EventEmitter {
 
       getGithubFeedURL(this.updateConfig)
         .then((hostURL) => {
-          this.logger.info("[更新器] github hostURL = ", hostURL);
+          this.logger.info("[Updater] github hostURL = ", hostURL);
           this.hostURL = newBaseUrl(hostURL);
           this.autoUpdater.checkForUpdates();
         })
         .catch((err) => {
           // 当更新检查失败时，需要关闭 updaterWindow 并加载应用的当前版本
-          this.logger.error("[更新器] 检查更新失败");
+          this.logger.error("[Updater] 检查更新失败");
           dispatchEvent(this.updaterWindow, "error", err);
           reject(err);
         });
@@ -181,7 +181,7 @@ class DeltaUpdater extends EventEmitter {
   }
 
   ensureSafeQuitAndInstall() {
-    this.logger.info("[更新器] 确保安全退出并安装");
+    this.logger.info("[Updater] 确保安全退出并安装");
     app.removeAllListeners("window-all-closed");
     const browserWindows = BrowserWindow.getAllWindows();
     browserWindows.forEach((browserWindow) => {
@@ -206,7 +206,7 @@ class DeltaUpdater extends EventEmitter {
     try {
       fs.writeFileSync(this.updateDetailsJSON, JSON.stringify(data));
     } catch (e) {
-      this.logger.error("[更新器] 写入更新详情错误 ", e);
+      this.logger.error("[Updater] 写入更新详情错误 ", e);
     }
   }
 
@@ -215,20 +215,17 @@ class DeltaUpdater extends EventEmitter {
     try {
       data = await fs.readJSON(this.updateDetailsJSON);
     } catch (e) {
-      this.logger.error(`[更新器] ${this.updateDetailsJSON} 文件未找到`);
+      this.logger.error(`[Updater] ${this.updateDetailsJSON} 文件未找到`);
     }
     return data;
   }
 
   async setFeedURL(feedURL) {
     try {
-      this.logger.info(
-        "[更新器] 设置 Feed URL: ",
-        feedURL,
-      );
+      this.logger.info("[Updater] 设置 Feed URL: ", feedURL);
       await this.autoUpdater.setFeedURL(feedURL);
     } catch (e) {
-      this.logger.error("[更新器] 设置 FeedURL 错误 ", e);
+      this.logger.error("[Updater] 设置 FeedURL 错误 ", e);
     }
   }
 
@@ -246,34 +243,32 @@ class DeltaUpdater extends EventEmitter {
     this.autoUpdater.removeAllListeners();
     this.pollForUpdates(resolve, reject);
 
-    this.logger.info("[更新器] 绑定事件监听器");
+    this.logger.info("[Updater] 绑定事件监听器");
 
     this.autoUpdater.on("checking-for-update", () => {
-      this.logger.info("[更新器] 正在检查更新");
+      this.logger.info("[Updater] 正在检查更新");
       dispatchEvent(this.updaterWindow, "checking-for-update");
     });
 
     this.autoUpdater.on("error", (error) => {
-      this.logger.error("[更新器] 错误: ", error);
+      this.logger.error("[Updater] 错误: ", error);
       this.emit("error", error);
       dispatchEvent(this.updaterWindow, "error", error);
       reject(error);
     });
 
     this.autoUpdater.on("update-available", async (info) => {
-      this.logger.info("[更新器] 有可用更新 ", info);
+      this.logger.info("[Updater] 有可用更新 ", info);
       this.emit("update-available", info);
       dispatchEvent(this.updaterWindow, "update-available", info);
 
       const updateDetails = await this.getAutoUpdateDetails();
       if (updateDetails) {
-        this.logger.info("[更新器] 上次更新详情: ", updateDetails);
+        this.logger.info("[Updater] 上次更新详情: ", updateDetails);
         const appVersion = app.getVersion();
-        this.logger.info("[更新器] 当前应用版本 ", appVersion);
+        this.logger.info("[Updater] 当前应用版本 ", appVersion);
         if (updateDetails.appVersion === appVersion) {
-          this.logger.info(
-            "[更新器] 上次更新失败，尝试使用普通更新器",
-          );
+          this.logger.info("[Updater] 上次更新失败，尝试使用全量更新");
           this.autoUpdater.downloadUpdate();
           return;
         }
@@ -291,19 +286,19 @@ class DeltaUpdater extends EventEmitter {
       });
     });
 
-    this.logger.info("[更新器] 添加退出监听器");
+    this.logger.info("[Updater] 添加退出监听器");
 
     app.on("quit", this.onQuit);
 
     this.autoUpdater.on("update-not-available", () => {
-      this.logger.info("[更新器] 没有可用更新");
+      this.logger.info("[Updater] 没有可用更新");
       this.emit("update-not-available");
       dispatchEvent(this.updaterWindow, "update-not-available");
       resolve();
     });
 
     this.autoUpdater.on("update-downloaded", (info) => {
-      this.logger.info("[更新器] 更新已下载 ", info);
+      this.logger.info("[Updater] 更新已下载 ", info);
       this.emit("update-downloaded", info);
       dispatchEvent(this.updaterWindow, "update-downloaded", info);
       this.handleUpdateDownloaded(info, resolve);
@@ -311,9 +306,9 @@ class DeltaUpdater extends EventEmitter {
   }
 
   async onQuit(event, exitCode) {
-    this.logger.info("[更新器] 退出应用");
+    this.logger.info("[Updater] 退出应用");
     if (this.autoUpdateInfo) {
-      this.logger.info("[更新器] 更新信息 ", this.autoUpdateInfo);
+      this.logger.info("[Updater] 更新信息 ", this.autoUpdateInfo);
       if (this.autoUpdateInfo.delta) {
         if (process.platform === "win32") {
           try {
@@ -328,16 +323,13 @@ class DeltaUpdater extends EventEmitter {
               },
             );
           } catch (err) {
-            this.logger.error("[更新器] 启动进程错误 ", err);
+            this.logger.error("[Updater] 启动进程错误 ", err);
           }
         }
 
         if (process.platform === "darwin") {
           const command = `${this.macUpdaterPath} ${getAppName()} ${this.autoUpdateInfo.deltaPath} ${this.hpatchzPath}`;
-          this.logger.info(
-            "[更新器] 在退出时应用增量更新 macOS ",
-            command,
-          );
+          this.logger.info("[Updater] 在退出时应用增量更新 macOS ", command);
 
           execFile(this.macUpdaterPath, [
             getAppName(),
@@ -349,27 +341,27 @@ class DeltaUpdater extends EventEmitter {
         await this.applyUpdate(this.autoUpdateInfo.version, false);
       }
     } else {
-      this.logger.info("[更新器] 现在退出，没有可用更新");
+      this.logger.info("[Updater] 现在退出，没有可用更新");
     }
   }
 
   quitAndInstall() {
-    this.logger.info("[更新器] 退出并安装");
+    this.logger.info("[Updater] 退出并安装");
 
     if (!this.autoUpdateInfo) {
-      this.logger.info("[更新器] 没有可用更新");
+      this.logger.info("[Updater] 没有可用更新");
       return;
     }
 
     setTimeout(async () => {
       if (this.autoUpdateInfo.delta) {
-        this.logger.info("[更新器] 应用增量更新");
+        this.logger.info("[Updater] 应用增量更新");
         await this.applyDeltaUpdate(
           this.autoUpdateInfo.deltaPath,
           this.autoUpdateInfo.version,
         );
       } else {
-        this.logger.info("[更新器] 应用完整更新");
+        this.logger.info("[Updater] 应用完整更新");
         await this.applyUpdate(this.autoUpdateInfo.version, true);
       }
     }, 0);
@@ -378,13 +370,11 @@ class DeltaUpdater extends EventEmitter {
   async handleUpdateDownloaded(info, resolve) {
     this.autoUpdateInfo = info; // important to save this info for later
     if (this.updaterWindow) {
-      this.logger.info("[更新器] 触发更新");
+      this.logger.info("[Updater] 触发更新");
       resolve();
       this.quitAndInstall();
     } else {
-      this.logger.info(
-        "[更新器] 未找到启动窗口，仅显示通知",
-      );
+      this.logger.info("[Updater] 未找到启动窗口，仅显示通知");
       this.showUpdateNotification(this.autoUpdateInfo);
     }
   }
@@ -402,7 +392,7 @@ class DeltaUpdater extends EventEmitter {
   }
 
   async boot({ splashScreen = false } = { splashScreen: true }) {
-    this.logger.info("[更新器] 启动中");
+    this.logger.info("[Updater] 启动中");
     if (!this.hostURL) {
       this.hostURL = await this.guessHostURL();
     }
@@ -419,7 +409,7 @@ class DeltaUpdater extends EventEmitter {
       }
     })
       .then(() => {
-        this.logger.info("[更新器] 启动完成");
+        this.logger.info("[Updater] 启动完成");
         if (
           splashScreen &&
           this.updaterWindow &&
@@ -430,7 +420,7 @@ class DeltaUpdater extends EventEmitter {
         }
       })
       .catch((err) => {
-        this.logger.error("[更新器] 启动错误 ", err);
+        this.logger.error("[Updater] 启动错误 ", err);
         if (
           splashScreen &&
           this.updaterWindow &&
@@ -454,13 +444,14 @@ class DeltaUpdater extends EventEmitter {
 
   async doSmartDownload({ version, releaseDate }) {
     const deltaDownloaded = (deltaPath) => {
-      this.logger.info(`[更新器] 已下载 ${deltaPath}`);
+      this.logger.info(`[Updater] 已下载 ${deltaPath}`);
       this.autoUpdater.emit("update-downloaded", {
         delta: true,
         deltaPath,
         version,
         releaseDate,
       });
+      this.cleanupOldDeltas(deltaPath);
     };
 
     let channel = getChannel();
@@ -472,11 +463,11 @@ class DeltaUpdater extends EventEmitter {
     const deltaJSONUrl = this.getDeltaJSONUrl();
     let deltaJSON = null;
     try {
-      this.logger.info(`[更新器] 从 ${deltaJSONUrl} 获取增量 JSON`);
+      this.logger.info(`[Updater] 从 ${deltaJSONUrl} 获取增量 JSON`);
       const response = await fetch(deltaJSONUrl);
       if (response.status !== 200) {
         this.logger.error(
-          `[更新器] 获取 ${deltaJSONUrl} 错误: ${response.status}`,
+          `[Updater] 获取 ${deltaJSONUrl} 错误: ${response.status}`,
         );
       } else {
         deltaJSON = await response.json();
@@ -486,7 +477,7 @@ class DeltaUpdater extends EventEmitter {
     }
 
     if (!deltaJSON) {
-      this.logger.error("[更新器] 未找到增量更新");
+      this.logger.error("[Updater] 未找到增量更新");
       this.autoUpdater.downloadUpdate();
       return;
     }
@@ -494,23 +485,18 @@ class DeltaUpdater extends EventEmitter {
     const deltaDetails = deltaJSON[appVersion];
 
     if (!deltaDetails) {
-      this.logger.error(
-        "[更新器] 此版本没有增量更新 ",
-        appVersion,
-      );
+      this.logger.error("[Updater] 此版本没有增量更新 ", appVersion);
       this.autoUpdater.downloadUpdate();
       return;
     }
 
     const deltaURL = this.getDeltaURL({ deltaPath: deltaDetails.path });
-    this.logger.info("[更新器] 增量更新 URL ", deltaURL);
+    this.logger.info("[Updater] 增量更新 URL ", deltaURL);
 
     const shaVal = deltaDetails.sha256;
 
     if (!shaVal) {
-      this.logger.info(
-        "[更新器] 无法获取增量文件的 SHA，尝试普通下载",
-      );
+      this.logger.info("[Updater] 无法获取增量文件的 SHA，尝试全量下载");
       this.autoUpdater.downloadUpdate();
       return;
     }
@@ -518,17 +504,14 @@ class DeltaUpdater extends EventEmitter {
       try {
         const macUpdaterURL = newUrlFromBase("mac-updater", this.hostURL);
         const hpatchzURL = newUrlFromBase("hpatchz", this.hostURL);
-        this.logger.info("[更新器] 下载 mac-updater 和 hpatchz");
+        this.logger.info("[Updater] 下载 mac-updater 和 hpatchz");
         this.logger.info(`${macUpdaterURL} 和 ${hpatchzURL}`);
         await downloadFile(macUpdaterURL, this.macUpdaterPath);
         await downloadFile(hpatchzURL, this.hpatchzPath);
         await fs.chmod(this.macUpdaterPath, "755");
         await fs.chmod(this.hpatchzPath, "755");
       } catch (err) {
-        this.logger.error(
-          "[更新器] 下载更新辅助文件错误",
-          err,
-        );
+        this.logger.error("[Updater] 下载更新辅助文件错误", err);
         this.autoUpdater.downloadUpdate();
         return;
       }
@@ -538,12 +521,12 @@ class DeltaUpdater extends EventEmitter {
 
     if (fs.existsSync(deltaPath) && isSHACorrect(deltaPath, shaVal)) {
       // cached downloaded file is good to go
-      this.logger.info("[更新器] 增量文件已存在 ", deltaPath);
+      this.logger.info("[Updater] 增量文件已存在 ", deltaPath);
       deltaDownloaded(deltaPath);
       return;
     }
 
-    this.logger.info("[更新器] 开始下载增量文件 ", deltaURL);
+    this.logger.info("[Updater] 开始下载增量文件 ", deltaURL);
 
     await fs.ensureDir(this.deltaHolderPath);
 
@@ -564,23 +547,20 @@ class DeltaUpdater extends EventEmitter {
       const isFileGood = isSHACorrect(deltaPath, shaVal);
       if (!isFileGood) {
         this.logger.info(
-          "[更新器] 增量文件已下载，但 SHA 不正确，尝试普通下载",
+          "[Updater] 增量文件已下载，但 SHA 不正确，尝试全量下载",
         );
         this.autoUpdater.downloadUpdate();
         return;
       }
       deltaDownloaded(deltaPath);
     } catch (err) {
-      this.logger.error(
-        "[更新器] 增量下载错误，尝试普通下载",
-        err,
-      );
+      this.logger.error("[Updater] 增量下载错误，尝试全量下载", err);
       this.autoUpdater.downloadUpdate();
     }
   }
 
   async applyUpdate(version, forceRunAfter = true) {
-    this.logger.info("[更新器] 应用普通更新");
+    this.logger.info("[Updater] 应用全量更新");
     await this.writeAutoUpdateDetails({
       isDelta: false,
       attemptedVersion: version,
@@ -595,7 +575,7 @@ class DeltaUpdater extends EventEmitter {
   }
 
   async applyDeltaUpdate(deltaPath, version) {
-    this.logger.info("[更新器] 应用增量更新");
+    this.logger.info("[Updater] 应用增量更新");
     await this.writeAutoUpdateDetails({
       isDelta: true,
       attemptedVersion: version,
@@ -605,10 +585,7 @@ class DeltaUpdater extends EventEmitter {
     try {
       if (process.platform === "darwin") {
         const command = `${this.macUpdaterPath} ${getAppName()} ${deltaPath} ${this.hpatchzPath}`;
-        this.logger.info(
-          "[更新器] 使用 execFile 应用增量更新 ",
-          command,
-        );
+        this.logger.info("[Updater] 使用 execFile 应用增量更新 ", command);
         execFile(this.macUpdaterPath, [
           getAppName(),
           deltaPath,
@@ -627,7 +604,46 @@ class DeltaUpdater extends EventEmitter {
       app.isQuitting = true;
       app.quit();
     } catch (err) {
-      this.log.info("[更新器] 应用增量更新错误 ", err);
+      this.log.info("[Updater] 应用增量更新错误 ", err);
+    }
+  }
+
+  async cleanupOldDeltas(keepDeltaPath) {
+    if (!this.deltaHolderPath) return;
+    try {
+      const files = await fs.readdir(this.deltaHolderPath);
+      if (files.length <= 3) return;
+
+      const fileStats = await Promise.all(
+        files.map(async (file) => {
+          const filePath = path.join(this.deltaHolderPath, file);
+          const stat = await fs.stat(filePath);
+          return { filePath, mtime: stat.mtime, isFile: stat.isFile() };
+        }),
+      );
+
+      // 只处理文件，排除目录
+      const allFiles = fileStats.filter((f) => f.isFile);
+
+      // 先过滤掉 keepDeltaPath，再按修改时间倒序，保留最新的3个
+      const toDelete = allFiles
+        .filter((f) => f.filePath !== keepDeltaPath)
+        .sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
+        .slice(3);
+
+      // 并行删除，单独捕获每个文件的错误
+      await Promise.all(
+        toDelete.map(async ({ filePath }) => {
+          try {
+            await fs.remove(filePath);
+            this.logger.info(`[Updater] 清理旧增量包 ${filePath}`);
+          } catch (err) {
+            this.logger.warn(`[Updater] 清理增量包失败 ${filePath}`, err);
+          }
+        }),
+      );
+    } catch (err) {
+      this.logger.warn("[Updater] 清理旧增量包失败", err);
     }
   }
 }
