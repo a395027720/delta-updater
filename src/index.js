@@ -626,11 +626,12 @@ class DeltaUpdater extends EventEmitter {
       // 只处理文件，排除目录
       const allFiles = fileStats.filter((f) => f.isFile);
 
-      // 先过滤掉 keepDeltaPath，再按修改时间倒序，保留最新的
+      // 按修改时间倒序（新→旧），跳过最新的 keepDeltaCount 个，
+      // 但要确保刚下载的 keepDeltaPath 不会被误删
       const toDelete = allFiles
-        .filter((f) => f.filePath !== keepDeltaPath)
         .sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
-        .slice(this.keepDeltaCount);
+        .slice(this.keepDeltaCount)
+        .filter((f) => f.filePath !== keepDeltaPath);
 
       // 并行删除，单独捕获每个文件的错误
       await Promise.all(
