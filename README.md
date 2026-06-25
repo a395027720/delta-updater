@@ -2,6 +2,8 @@
 
 > 基于 electron-updater 的增量更新模块 — 下载 .delta 补丁文件替代全量安装包，大幅节省带宽。
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](#许可证)
+
 ## 特性
 
 - 启动时展示 splash 窗口，实时显示更新进度
@@ -82,3 +84,7 @@ app.whenReady().then(async () => {
 ![默认 splash](https://electrondelta.com/assets/delta-downloading.png)
 
 传入自定义 logo 后，splash 窗口 header 将显示你的应用图标。
+
+## 许可证
+
+[MIT](./LICENSE) © Jake Gao
