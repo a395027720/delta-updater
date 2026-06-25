@@ -447,18 +447,16 @@ class DeltaUpdater extends EventEmitter {
     this.logger.info(
       `[Updater] doSmartDownload 开始, version=${version}, releaseDate=${releaseDate}`,
     );
-    const deltaDownloaded = (deltaPath) => {
+    const deltaDownloaded = async (deltaPath) => {
       this.logger.info(`[Updater] 已下载 ${deltaPath}`);
+      // 先清理旧增量文件，再触发更新事件 —— 因为 update-downloaded 会触发 quitAndInstall 重启
+      await this.cleanupOldDeltas(deltaPath);
       this.autoUpdater.emit("update-downloaded", {
         delta: true,
         deltaPath,
         version,
         releaseDate,
       });
-      this.logger.info(
-        `[Updater] 准备调用 cleanupOldDeltas, deltaHolderPath=${this.deltaHolderPath}`,
-      );
-      this.cleanupOldDeltas(deltaPath);
     };
 
     let channel = getChannel();
@@ -532,7 +530,7 @@ class DeltaUpdater extends EventEmitter {
     if (fs.existsSync(deltaPath) && isSHACorrect(deltaPath, shaVal)) {
       // cached downloaded file is good to go
       this.logger.info("[Updater] 增量文件已存在 ", deltaPath);
-      deltaDownloaded(deltaPath);
+      await deltaDownloaded(deltaPath);
       return;
     }
 
@@ -562,7 +560,7 @@ class DeltaUpdater extends EventEmitter {
         this.autoUpdater.downloadUpdate();
         return;
       }
-      deltaDownloaded(deltaPath);
+      await deltaDownloaded(deltaPath);
     } catch (err) {
       this.logger.error("[Updater] 增量下载错误，尝试全量下载", err);
       this.autoUpdater.downloadUpdate();
