@@ -62,6 +62,7 @@ class DeltaUpdater extends EventEmitter {
     this.autoUpdater =
       options.autoUpdater || require("electron-updater").autoUpdater;
     this.hostURL = options.hostURL || null;
+    this.logo = options.logo || null;
 
     if (app.isPackaged) {
       this.setConfigPath();
@@ -229,7 +230,7 @@ class DeltaUpdater extends EventEmitter {
   }
 
   createSplashWindow() {
-    this.updaterWindow = getWindow();
+    this.updaterWindow = getWindow({ logo: this.logo });
   }
 
   attachListeners(resolve, reject) {
