@@ -54,9 +54,10 @@ app.whenReady().then(async () => {
 | 参数          | 类型     | 必填 | 说明                                                                   |
 | ------------- | -------- | ---- | ---------------------------------------------------------------------- |
 | `hostURL`     | `string` | 是   | 更新服务器根地址                                                       |
-| `logger`      | `object` | 否   | 日志实例，默认 `console`                                               |
-| `autoUpdater` | `object` | 否   | electron-updater 实例，默认自动获取                                    |
-| `logo`        | `string` | 否   | splash 窗口 logo，支持本地文件路径或 data URI。未传时显示默认更新 icon |
+| `logger`        | `object` | 否   | 日志实例，默认 `console`                                               |
+| `autoUpdater`   | `object` | 否   | electron-updater 实例，默认自动获取                                    |
+| `logo`          | `string` | 否   | splash 窗口 logo，支持本地文件路径或 data URI。未传时显示默认更新 icon |
+| `keepDeltaCount`| `number` | 否   | 增量更新文件保留数量，默认 `3`。清理时会保留最新 N 个文件               |
 
 ### `deltaUpdater.boot({ splashScreen })`
 

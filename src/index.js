@@ -63,6 +63,7 @@ class DeltaUpdater extends EventEmitter {
       options.autoUpdater || require("electron-updater").autoUpdater;
     this.hostURL = options.hostURL || null;
     this.logo = options.logo || null;
+    this.keepDeltaCount = options.keepDeltaCount || 3;
 
     // 绑定 this 防止作为事件回调时丢失上下文
     this.onQuit = this.onQuit.bind(this);
@@ -612,7 +613,7 @@ class DeltaUpdater extends EventEmitter {
     if (!this.deltaHolderPath) return;
     try {
       const files = await fs.readdir(this.deltaHolderPath);
-      if (files.length <= 3) return;
+      if (files.length <= this.keepDeltaCount) return;
 
       const fileStats = await Promise.all(
         files.map(async (file) => {
@@ -625,11 +626,11 @@ class DeltaUpdater extends EventEmitter {
       // 只处理文件，排除目录
       const allFiles = fileStats.filter((f) => f.isFile);
 
-      // 先过滤掉 keepDeltaPath，再按修改时间倒序，保留最新的3个
+      // 先过滤掉 keepDeltaPath，再按修改时间倒序，保留最新的
       const toDelete = allFiles
         .filter((f) => f.filePath !== keepDeltaPath)
         .sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
-        .slice(3);
+        .slice(this.keepDeltaCount);
 
       // 并行删除，单独捕获每个文件的错误
       await Promise.all(
