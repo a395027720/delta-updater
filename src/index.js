@@ -64,6 +64,9 @@ class DeltaUpdater extends EventEmitter {
     this.hostURL = options.hostURL || null;
     this.logo = options.logo || null;
 
+    // 绑定 this 防止作为事件回调时丢失上下文
+    this.onQuit = this.onQuit.bind(this);
+
     if (app.isPackaged) {
       this.setConfigPath();
       this.prepareUpdater();
