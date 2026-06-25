@@ -613,7 +613,13 @@ class DeltaUpdater extends EventEmitter {
     if (!this.deltaHolderPath) return;
     try {
       const files = await fs.readdir(this.deltaHolderPath);
-      if (files.length <= this.keepDeltaCount) return;
+      this.logger.info(`[Updater] delta目录文件列表(${files.length}): ${JSON.stringify(files)}`);
+      this.logger.info(`[Updater] keepDeltaCount=${this.keepDeltaCount}, keepDeltaPath=${keepDeltaPath}`);
+
+      if (files.length <= this.keepDeltaCount) {
+        this.logger.info(`[Updater] 文件数<=保留数，无需清理`);
+        return;
+      }
 
       const fileStats = await Promise.all(
         files.map(async (file) => {
@@ -625,25 +631,40 @@ class DeltaUpdater extends EventEmitter {
 
       // 只处理文件，排除目录
       const allFiles = fileStats.filter((f) => f.isFile);
+      this.logger.info(`[Updater] 有效文件(${allFiles.length}): ${JSON.stringify(allFiles.map(f => ({ path: path.basename(f.filePath), mtime: f.mtime })))}`);
 
       // 按修改时间倒序（新→旧），跳过最新的 keepDeltaCount 个，
       // 但要确保刚下载的 keepDeltaPath 不会被误删
-      const toDelete = allFiles
-        .sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
+      const sorted = allFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+      const toDelete = sorted
         .slice(this.keepDeltaCount)
         .filter((f) => f.filePath !== keepDeltaPath);
 
+      this.logger.info(`[Updater] 排序后(新→旧): ${JSON.stringify(sorted.map(f => path.basename(f.filePath)))}`);
+      this.logger.info(`[Updater] 待删除(${toDelete.length}): ${JSON.stringify(toDelete.map(f => path.basename(f.filePath)))}`);
+
+      if (toDelete.length === 0) {
+        this.logger.info(`[Updater] 没有需要清理的文件`);
+        return;
+      }
+
       // 并行删除，单独捕获每个文件的错误
-      await Promise.all(
+      const results = await Promise.all(
         toDelete.map(async ({ filePath }) => {
           try {
             await fs.remove(filePath);
-            this.logger.info(`[Updater] 清理旧增量包 ${filePath}`);
+            this.logger.info(`[Updater] 已清理旧增量包 ${filePath}`);
+            return { filePath, success: true };
           } catch (err) {
             this.logger.warn(`[Updater] 清理增量包失败 ${filePath}`, err);
+            return { filePath, success: false, error: err.message };
           }
         }),
       );
+
+      const deleted = results.filter(r => r.success);
+      const failed = results.filter(r => !r.success);
+      this.logger.info(`[Updater] 清理完成: 成功${deleted.length}个, 失败${failed.length}个`);
     } catch (err) {
       this.logger.warn("[Updater] 清理旧增量包失败", err);
     }
