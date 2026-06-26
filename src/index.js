@@ -257,10 +257,6 @@ class DeltaUpdater extends EventEmitter {
    * 如果外部在一定时间内未调用，内部会通过 fallback 定时器自动关闭。
    */
   closeSplash() {
-    if (this._splashTimer) {
-      clearTimeout(this._splashTimer);
-      this._splashTimer = null;
-    }
     if (this.updaterWindow && !this.updaterWindow.isDestroyed()) {
       this.logger.info("[Updater] 关闭 splash 窗口");
       this.updaterWindow.close();
@@ -450,9 +446,7 @@ class DeltaUpdater extends EventEmitter {
           this.updaterWindow &&
           !this.updaterWindow.isDestroyed()
         ) {
-          this._splashTimer = setTimeout(() => {
-            this.closeSplash();
-          }, 2000);
+          this.closeSplash();
         }
       })
       .catch((err) => {
