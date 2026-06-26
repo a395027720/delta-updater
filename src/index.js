@@ -18,8 +18,6 @@ const { newBaseUrl, newUrlFromBase } = require("./utils");
 const { getStartURL, getWindow, dispatchEvent } = require("./splash");
 
 const { app, BrowserWindow, Notification } = electron;
-const oneMinute = 60 * 1000;
-const fifteenMinutes = 15 * oneMinute;
 
 const getChannel = () => {
   const version = app.getVersion();
@@ -198,9 +196,6 @@ class DeltaUpdater extends EventEmitter {
 
   pollForUpdates(resolve, reject) {
     this.checkForUpdates(resolve, reject);
-    setInterval(() => {
-      this.checkForUpdates(resolve, reject);
-    }, fifteenMinutes);
   }
 
   ensureSafeQuitAndInstall() {
@@ -268,9 +263,12 @@ class DeltaUpdater extends EventEmitter {
       clearTimeout(this._splashTimer);
       this._splashTimer = null;
     }
+
+    console.log("[Updater] 关闭 splash 窗口前");
+    s;
     this._splashClosed = true;
     if (this.updaterWindow && !this.updaterWindow.isDestroyed()) {
-      this.logger.info("[Updater] 关闭 splash 窗口");
+      this.logger.info("[Updater] 关闭 splash 窗口后");
       this.updaterWindow.close();
     }
     this.updaterWindow = null;
@@ -453,7 +451,11 @@ class DeltaUpdater extends EventEmitter {
     })
       .then(() => {
         this.logger.info("[Updater] 启动完成");
-        if (splashScreen && this.updaterWindow && !this.updaterWindow.isDestroyed()) {
+        if (
+          splashScreen &&
+          this.updaterWindow &&
+          !this.updaterWindow.isDestroyed()
+        ) {
           // 启动一个 fallback 定时器：10 秒后如果外部未调用 closeSplash()，则自动关闭
           this._splashClosed = false;
           this._splashTimer = setTimeout(() => {
