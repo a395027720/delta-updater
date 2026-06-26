@@ -321,7 +321,7 @@ class DeltaUpdater extends EventEmitter {
 
     this.logger.info("[Updater] 添加退出监听器");
 
-    app.on("quit", this.onQuit);
+    // app.on("quit", this.onQuit);
 
     this.autoUpdater.on("update-not-available", () => {
       this.logger.info("[Updater] 没有可用更新");
@@ -438,9 +438,7 @@ class DeltaUpdater extends EventEmitter {
     if (this.splashScreen) {
       const startURL = getStartURL();
       this.createSplashWindow();
-      // await loadURL 确保页面加载完成（dom-ready 已触发，logo/title 已注入）
-      // 之后再 dispatch 事件才能拿到正确的 __CUSTOM_LOGO__ / __APP_NAME__
-      await this.updaterWindow.loadURL(startURL);
+      this.updaterWindow.loadURL(startURL);
     }
     return new Promise((resolve, reject) => {
       this.attachListeners(resolve, reject);
@@ -450,12 +448,6 @@ class DeltaUpdater extends EventEmitter {
     })
       .then(() => {
         this.logger.info("[Updater] 启动完成");
-        // 无更新时直接关闭 splash；有更新时 autoUpdateInfo 已设置，splash 保持到重启
-        if (this.splashScreen && !this.autoUpdateInfo) {
-          setTimeout(() => {
-            this.closeSplash();
-          }, 5000);
-        }
       })
       .catch((err) => {
         this.logger.error("[Updater] 启动错误 ", err);

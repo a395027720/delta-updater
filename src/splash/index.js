@@ -71,8 +71,8 @@ const getWindow = (options) => {
   if (opts.splashTitle) {
     injections.push(
       "window.__APP_NAME__ = '" + opts.splashTitle + "';" +
-      "var titleEl = document.getElementById('titleText');" +
-      "if (titleEl) titleEl.textContent = '" + opts.splashTitle + " 正在启动';"
+      "var tEl = document.getElementById('titleText');" +
+      "if (tEl) tEl.textContent = '" + opts.splashTitle + "';"
     );
   }
 
