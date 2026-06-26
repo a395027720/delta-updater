@@ -310,6 +310,16 @@ class DeltaUpdater extends EventEmitter {
     );
     this.deltaHolderPath = path.join(this.deltaUpdaterRootPath, "./deltas");
 
+    // splash-helper 独立进程的 port/pid 文件路径
+    this.portFilePath = path.join(
+      this.deltaUpdaterRootPath,
+      "splash-helper.port",
+    );
+    this.pidFilePath = path.join(
+      this.deltaUpdaterRootPath,
+      "splash-helper.pid",
+    );
+
     if (process.platform === "darwin") {
       this.macUpdaterPath = path.join(
         this.deltaUpdaterRootPath,
@@ -922,8 +932,6 @@ class DeltaUpdater extends EventEmitter {
     try {
       fs.writeFileSync(scriptPath, SPLASH_HELPER_SCRIPT, "utf8");
       this.helperScriptPath = scriptPath;
-      this.portFilePath = path.join(this.deltaUpdaterRootPath, "splash-helper.port");
-      this.pidFilePath = path.join(this.deltaUpdaterRootPath, "splash-helper.pid");
       this.logger.info("[Updater] splash-helper 脚本已写入 ", scriptPath);
       return true;
     } catch (e) {
