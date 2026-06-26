@@ -81,4 +81,4 @@ function dispatchEvent(updaterWindow, eventName, payload) {
   }
 }
 
-module.exports = { getWindow, getStartURL, dispatchEvent, toDataURI };
+module.exports = { getWindow, getStartURL, dispatchEvent };

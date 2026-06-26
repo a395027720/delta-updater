@@ -6,8 +6,7 @@ const crypto = require("crypto");
 const fs = require("fs-extra");
 const fetch = require("cross-fetch");
 const semver = require("semver");
-const http = require("http");
-const { spawn, spawnSync, execFile, execSync } = require("child_process");
+const { spawnSync, execFile, execSync } = require("child_process");
 const yaml = require("yaml");
 
 const { downloadFile, niceBytes } = require("./download");
@@ -16,154 +15,11 @@ const { getGithubFeedURL } = require("./github-provider");
 const { getGenericFeedURL } = require("./generic-provider");
 const { newBaseUrl, newUrlFromBase } = require("./utils");
 
-const { getStartURL, getWindow, toDataURI } = require("./splash");
+const { getStartURL, getWindow, dispatchEvent } = require("./splash");
 
 const { app, BrowserWindow, Notification } = electron;
-
-// ========== splash-helper 独立进程脚本（内联，运行时写入磁盘） ==========
-const SPLASH_HELPER_SCRIPT = `'use strict';
-const { app, BrowserWindow } = require('electron');
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-
-// --- 解析 CLI 参数 ---
-const ARGS = {};
-process.argv.forEach((arg) => {
-  const matched = arg.match(/^--(.+?)=(.+)\$/);
-  if (matched) ARGS[matched[1]] = matched[2];
-});
-
-const SPLASH_URL    = ARGS['splash-url']  || '';
-const LOGO_DATA_URI = ARGS['logo']         || '';
-const PORT_FILE     = ARGS['port-file']    || '';
-const PID_FILE      = ARGS['pid-file']     || '';
-const TIMEOUT_MS    = parseInt(ARGS['timeout'], 10) || 300000;
-
-const MAIN_MESSAGE = '@electron-delta/updater:main';
-
-let timeoutHandle = null;
-let win = null;
-let server = null;
-
-function resetTimeout() {
-  if (timeoutHandle) clearTimeout(timeoutHandle);
-  timeoutHandle = setTimeout(() => {
-    if (server) { try { server.close(); } catch (_) {} }
-    if (win && !win.isDestroyed()) win.close();
-    try { app.quit(); } catch (_) {}
-    process.exit(0);
-  }, TIMEOUT_MS);
-}
-
-function cleanupFiles() {
-  try { fs.unlinkSync(PORT_FILE); } catch (_) {}
-  try { fs.unlinkSync(PID_FILE); } catch (_) {}
-}
-
-app.whenReady().then(() => {
-  // 写入 PID 文件
-  try { fs.writeFileSync(PID_FILE, String(process.pid)); } catch (_) {}
-
-  // 创建 BrowserWindow（配置与 getWindow() 一致）
-  win = new BrowserWindow({
-    width: 360, height: 150,
-    resizable: false,
-    frame: false,
-    show: true,
-    titleBarStyle: 'hidden',
-    backgroundColor: '#1b1e2e',
-    fullscreenable: false,
-    skipTaskbar: false,
-    center: true,
-    movable: false,
-    alwaysOnTop: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      enableRemoteModule: false,
-      disableBlinkFeatures: 'Auxclick',
-      sandbox: true,
-    },
-  });
-
-  // 注入自定义 logo（如有）
-  if (LOGO_DATA_URI) {
-    win.webContents.once('dom-ready', () => {
-      win.webContents.executeJavaScript(
-        "window.__CUSTOM_LOGO__ = '" + LOGO_DATA_URI.replace(/'/g, "\\\\'") + "';" +
-        "var el = document.getElementById('logoImg');" +
-        "if (el) el.src = window.__CUSTOM_LOGO__;"
-      ).catch(() => {});
-    });
-  }
-
-  win.loadURL(SPLASH_URL);
-
-  // 启动 HTTP server
-  server = http.createServer((req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204); res.end(); return;
-    }
-
-    if (req.method === 'GET' && req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', pid: process.pid }));
-      return;
-    }
-
-    if (req.method === 'POST' && req.url === '/event') {
-      resetTimeout();
-      let body = '';
-      req.on('data', (c) => { body += c; });
-      req.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          if (win && !win.isDestroyed()) {
-            const payload = JSON.stringify({ eventName: data.eventName, payload: data.payload });
-            win.webContents.executeJavaScript(
-              "window.dispatchEvent(new CustomEvent('" + MAIN_MESSAGE + "', { detail: " + payload + " }));"
-            ).catch(() => {});
-          }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true }));
-        } catch (e) {
-          res.writeHead(400);
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
-      return;
-    }
-
-    if (req.method === 'POST' && req.url === '/close') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, closing: true }));
-      cleanupFiles();
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-      setTimeout(() => {
-        if (win && !win.isDestroyed()) win.close();
-        try { app.quit(); } catch (_) {}
-        process.exit(0);
-      }, 200);
-      return;
-    }
-
-    res.writeHead(404); res.end('not found');
-  });
-
-  server.listen(0, '127.0.0.1', () => {
-    const port = server.address().port;
-    try { fs.writeFileSync(PORT_FILE, String(port)); } catch (_) {}
-    resetTimeout();
-  });
-});
-
-app.on('window-all-closed', () => {}); // splash 进程不自动退出
-`;
+const oneMinute = 60 * 1000;
+const fifteenMinutes = 15 * oneMinute;
 
 const getChannel = () => {
   const version = app.getVersion();
@@ -208,13 +64,6 @@ class DeltaUpdater extends EventEmitter {
     this.hostURL = options.hostURL || null;
     this.logo = options.logo || null;
     this.keepDeltaCount = options.keepDeltaCount || 3;
-
-    // 外部 splash-helper 进程管理
-    this.splashPort = null;          // splash-helper HTTP server 端口
-    this.splashProcess = null;       // ChildProcess 引用
-    this.portFilePath = null;        // 端口号文件路径
-    this.pidFilePath = null;         // PID 文件路径
-    this.helperScriptPath = null;    // splash-helper.js 磁盘路径
 
     // 绑定 this 防止作为事件回调时丢失上下文
     this.onQuit = this.onQuit.bind(this);
@@ -280,7 +129,7 @@ class DeltaUpdater extends EventEmitter {
       if (programData) {
         return path.join(programData, cacheDirName);
       }
-      // 降级：如果 ProgramData 不可用，回退到 AppData/Local
+      // 降级：如果 ProgramData 不可用（极其罕见），回退到 AppData/Local
       return path.join(app.getPath("appData"), `../Local/${cacheDirName}`);
     }
     // macOS: 保持原有路径
@@ -309,16 +158,6 @@ class DeltaUpdater extends EventEmitter {
       "./update-details.json",
     );
     this.deltaHolderPath = path.join(this.deltaUpdaterRootPath, "./deltas");
-
-    // splash-helper 独立进程的 port/pid 文件路径
-    this.portFilePath = path.join(
-      this.deltaUpdaterRootPath,
-      "splash-helper.port",
-    );
-    this.pidFilePath = path.join(
-      this.deltaUpdaterRootPath,
-      "splash-helper.pid",
-    );
 
     if (process.platform === "darwin") {
       this.macUpdaterPath = path.join(
@@ -349,7 +188,7 @@ class DeltaUpdater extends EventEmitter {
         .catch((err) => {
           // 当更新检查失败时，需要关闭 updaterWindow 并加载应用的当前版本
           this.logger.error("[Updater] 检查更新失败");
-          this._sendToSplash("error", err);
+          dispatchEvent(this.updaterWindow, "error", err);
           reject(err);
         });
     } else {
@@ -359,6 +198,9 @@ class DeltaUpdater extends EventEmitter {
 
   pollForUpdates(resolve, reject) {
     this.checkForUpdates(resolve, reject);
+    setInterval(() => {
+      this.checkForUpdates(resolve, reject);
+    }, fifteenMinutes);
   }
 
   ensureSafeQuitAndInstall() {
@@ -414,38 +256,6 @@ class DeltaUpdater extends EventEmitter {
     this.updaterWindow = getWindow({ logo: this.logo });
   }
 
-  /**
-   * 关闭 splash 窗口。
-   * 优先关闭外部 splash-helper 进程，同时处理进程内窗口回退路径。
-   * 外部（如主应用加载完成时）调用此方法主动关闭 splash。
-   */
-  closeSplash() {
-    // 关闭外部 splash-helper（通过 HTTP /close）
-    if (this.splashPort) {
-      const req = http.request({
-        hostname: "127.0.0.1",
-        port: this.splashPort,
-        path: "/close",
-        method: "POST",
-        timeout: 3000,
-      }, (res) => {
-        res.resume();
-      });
-      req.on("error", () => {});
-      req.end();
-      this._cleanupSplashFiles();
-      this.splashPort = null;
-      this.splashProcess = null;
-    }
-
-    // 关闭进程内窗口（回退路径）
-    if (this.updaterWindow && !this.updaterWindow.isDestroyed()) {
-      this.logger.info("[Updater] 关闭 splash 窗口");
-      this.updaterWindow.close();
-    }
-    this.updaterWindow = null;
-  }
-
   attachListeners(resolve, reject) {
     if (!app.isPackaged) {
       setTimeout(() => {
@@ -460,20 +270,20 @@ class DeltaUpdater extends EventEmitter {
 
     this.autoUpdater.on("checking-for-update", () => {
       this.logger.info("[Updater] 正在检查更新");
-      this._sendToSplash("checking-for-update");
+      dispatchEvent(this.updaterWindow, "checking-for-update");
     });
 
     this.autoUpdater.on("error", (error) => {
       this.logger.error("[Updater] 错误: ", error);
       this.emit("error", error);
-      this._sendToSplash("error", error);
+      dispatchEvent(this.updaterWindow, "error", error);
       reject(error);
     });
 
     this.autoUpdater.on("update-available", async (info) => {
       this.logger.info("[Updater] 有可用更新 ", info);
       this.emit("update-available", info);
-      this._sendToSplash("update-available", info);
+      dispatchEvent(this.updaterWindow, "update-available", info);
 
       const updateDetails = await this.getAutoUpdateDetails();
       if (updateDetails) {
@@ -492,7 +302,7 @@ class DeltaUpdater extends EventEmitter {
 
     this.autoUpdater.on("download-progress", (info) => {
       this.emit("download-progress", info);
-      this._sendToSplash("download-progress", {
+      dispatchEvent(this.updaterWindow, "download-progress", {
         percentage: parseFloat(info.percent).toFixed(1),
         transferred: niceBytes(info.transferred),
         total: niceBytes(info.total),
@@ -506,14 +316,14 @@ class DeltaUpdater extends EventEmitter {
     this.autoUpdater.on("update-not-available", () => {
       this.logger.info("[Updater] 没有可用更新");
       this.emit("update-not-available");
-      this._sendToSplash("update-not-available");
+      dispatchEvent(this.updaterWindow, "update-not-available");
       resolve();
     });
 
     this.autoUpdater.on("update-downloaded", (info) => {
       this.logger.info("[Updater] 更新已下载 ", info);
       this.emit("update-downloaded", info);
-      this._sendToSplash("update-downloaded", info);
+      dispatchEvent(this.updaterWindow, "update-downloaded", info);
       this.handleUpdateDownloaded(info, resolve);
     });
   }
@@ -582,7 +392,7 @@ class DeltaUpdater extends EventEmitter {
 
   async handleUpdateDownloaded(info, resolve) {
     this.autoUpdateInfo = info; // important to save this info for later
-    if (this.updaterWindow || this.splashPort) {
+    if (this.updaterWindow) {
       this.logger.info("[Updater] 触发更新");
       resolve();
       this.quitAndInstall();
@@ -611,29 +421,10 @@ class DeltaUpdater extends EventEmitter {
     }
 
     if (splashScreen) {
-      // 1. 先尝试检测上一次次运行的 splash-helper 进程
-      const existing = await this._detectExistingSplashHelper();
-
-      if (!existing) {
-        // 2. 写入脚本并启动外部 splash-helper
-        const written = this._writeSplashHelperScript();
-        if (written) {
-          const spawned = await this._spawnSplashHelper();
-          if (!spawned) {
-            // 回退到进程内 BrowserWindow
-            this.logger.info("[Updater] 外部 splash 不可用，使用进程内窗口");
-            this.createSplashWindow();
-            this.updaterWindow.loadURL(getStartURL());
-          }
-        } else {
-          // 回退到进程内 BrowserWindow
-          this.createSplashWindow();
-          this.updaterWindow.loadURL(getStartURL());
-        }
-      }
-      // existing helper detected: 已在 _detectExistingSplashHelper 中重连，无需操作
+      const startURL = getStartURL();
+      this.createSplashWindow();
+      this.updaterWindow.loadURL(startURL);
     }
-
     return new Promise((resolve, reject) => {
       this.attachListeners(resolve, reject);
       if (!splashScreen) {
@@ -642,16 +433,25 @@ class DeltaUpdater extends EventEmitter {
     })
       .then(() => {
         this.logger.info("[Updater] 启动完成");
-        // 仅在没有更新待安装时关闭 splash
-        // 有更新时 this.autoUpdateInfo 已在 handleUpdateDownloaded 中设置，
-        // splash 需要跨重启存活，由新进程实例来关闭
-        if (!this.autoUpdateInfo) {
-          this.closeSplash();
+        if (
+          splashScreen &&
+          this.updaterWindow &&
+          !this.updaterWindow.isDestroyed()
+        ) {
+          this.updaterWindow.close();
+          this.updaterWindow = null;
         }
       })
       .catch((err) => {
         this.logger.error("[Updater] 启动错误 ", err);
-        this.closeSplash();
+        if (
+          splashScreen &&
+          this.updaterWindow &&
+          !this.updaterWindow.isDestroyed()
+        ) {
+          this.updaterWindow.close();
+          this.updaterWindow = null;
+        }
       });
   }
 
@@ -765,7 +565,7 @@ class DeltaUpdater extends EventEmitter {
         `已下载=${percentage}%, 已传输 = ${transferred} / ${total}`,
       );
       this.emit("download-progress", { percentage, transferred, total });
-      this._sendToSplash("download-progress", {
+      dispatchEvent(this.updaterWindow, "download-progress", {
         percentage: parseFloat(percentage).toFixed(1),
         transferred: niceBytes(transferred),
         total: niceBytes(total),
@@ -916,205 +716,6 @@ class DeltaUpdater extends EventEmitter {
     } catch (err) {
       this.logger.warn("[Updater] 清理旧增量包失败", err);
     }
-  }
-
-  // ========== 外部 splash-helper 进程管理 ==========
-
-  /**
-   * 将 splash-helper 脚本写入磁盘。
-   * 只在生产环境（app.isPackaged）执行，文件写入 delta 缓存根目录。
-   * @returns {boolean}
-   */
-  _writeSplashHelperScript() {
-    if (!app.isPackaged) return false;
-
-    const scriptPath = path.join(this.deltaUpdaterRootPath, "splash-helper.js");
-    try {
-      fs.writeFileSync(scriptPath, SPLASH_HELPER_SCRIPT, "utf8");
-      this.helperScriptPath = scriptPath;
-      this.logger.info("[Updater] splash-helper 脚本已写入 ", scriptPath);
-      return true;
-    } catch (e) {
-      this.logger.error("[Updater] 无法写入 splash-helper 脚本", e);
-      return false;
-    }
-  }
-
-  /**
-   * 检测是否有上一次运行遗留的 splash-helper 进程。
-   * 通过读取 port 文件并发起 health check 来判断。
-   * @returns {Promise<boolean>}
-   */
-  _detectExistingSplashHelper() {
-    if (!this.portFilePath) return Promise.resolve(false);
-
-    let port;
-    try {
-      port = parseInt(fs.readFileSync(this.portFilePath, "utf8").trim(), 10);
-      if (!port) return Promise.resolve(false);
-    } catch (_) {
-      return Promise.resolve(false);
-    }
-
-    return new Promise((resolve) => {
-      const req = http.request({
-        hostname: "127.0.0.1",
-        port,
-        path: "/health",
-        method: "GET",
-        timeout: 2000,
-      }, (res) => {
-        if (res.statusCode === 200) {
-          this.splashPort = port;
-          this.logger.info(`[Updater] 重连到现有 splash-helper (port=${port})`);
-          resolve(true);
-        } else {
-          resolve(false);
-        }
-      });
-      req.on("error", () => {
-        this.logger.info("[Updater] splash-helper health check 失败，清理过期文件");
-        this._cleanupSplashFiles();
-        resolve(false);
-      });
-      req.on("timeout", () => {
-        req.destroy();
-        resolve(false);
-      });
-      req.end();
-    });
-  }
-
-  /**
-   * 轮询 port 文件，等待 splash-helper 写入端口号。
-   * @param {number} timeout 超时毫秒
-   * @returns {Promise<number|null>}
-   */
-  _waitForPortFile(timeout) {
-    const start = Date.now();
-    return new Promise((resolve) => {
-      const check = () => {
-        try {
-          const port = parseInt(fs.readFileSync(this.portFilePath, "utf8").trim(), 10);
-          if (port > 0) {
-            resolve(port);
-            return;
-          }
-        } catch (_) {
-          // 文件尚未写入
-        }
-        if (Date.now() - start > timeout) {
-          resolve(null);
-          return;
-        }
-        setTimeout(check, 100);
-      };
-      check();
-    });
-  }
-
-  /**
-   * 启动独立的 splash-helper Electron 进程。
-   * @returns {Promise<boolean>}
-   */
-  async _spawnSplashHelper() {
-    if (!this.helperScriptPath || !app.isPackaged) return false;
-
-    // 清理可能残留的 port 文件
-    try { fs.unlinkSync(this.portFilePath); } catch (_) {}
-
-    // 转换 logo 为 data URI
-    let logoArg = "";
-    if (this.logo) {
-      const dataURI = toDataURI(this.logo);
-      if (dataURI) {
-        // Windows CreateProcess 命令行限制约 32KB，data URI 通常远小于此
-        logoArg = `--logo=${dataURI}`;
-      }
-    }
-
-    const splashURL = getStartURL();
-    const args = [
-      this.helperScriptPath,
-      `--splash-url=${splashURL}`,
-      `--port-file=${this.portFilePath}`,
-      `--pid-file=${this.pidFilePath}`,
-      logoArg,
-      `--timeout=300000`,
-    ].filter(Boolean);
-
-    try {
-      const child = spawn(process.execPath, args, {
-        detached: true,
-        stdio: "ignore",
-        windowsHide: true,
-      });
-      child.unref();
-
-      // 轮询等待 port 文件写入（最多 10 秒）
-      const port = await this._waitForPortFile(10000);
-      if (!port) {
-        this.logger.error("[Updater] splash-helper 启动超时（未写入 port 文件）");
-        return false;
-      }
-
-      this.splashPort = port;
-      this.splashProcess = child;
-      this.logger.info(`[Updater] splash-helper 已启动 (pid=${child.pid}, port=${port})`);
-      return true;
-    } catch (err) {
-      this.logger.error("[Updater] 启动 splash-helper 失败", err);
-      this._cleanupSplashFiles();
-      return false;
-    }
-  }
-
-  /**
-   * 向外部 splash-helper 发送事件。
-   * fire-and-forget 模式，不等待响应，静默处理错误。
-   * @param {string} eventName
-   * @param {*} payload
-   */
-  _sendToSplash(eventName, payload) {
-    // 优先：通过 HTTP 发送到外部 splash-helper
-    if (this.splashPort) {
-      const data = JSON.stringify({ eventName, payload });
-      const req = http.request({
-        hostname: "127.0.0.1",
-        port: this.splashPort,
-        path: "/event",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(data),
-        },
-        timeout: 3000,
-      }, (res) => {
-        res.resume();
-      });
-      req.on("error", () => {
-        // splash 非关键路径，静默处理
-      });
-      req.write(data);
-      req.end();
-      return;
-    }
-
-    // 回退：发送到进程内 BrowserWindow（开发模式或外部 splash 不可用时）
-    if (this.updaterWindow && !this.updaterWindow.isDestroyed()) {
-      this.updaterWindow.webContents.send("@electron-delta/updater:main", {
-        eventName,
-        payload,
-      });
-    }
-  }
-
-  /**
-   * 清理 splash-helper 相关文件。
-   */
-  _cleanupSplashFiles() {
-    try { if (this.portFilePath) fs.unlinkSync(this.portFilePath); } catch (_) {}
-    try { if (this.pidFilePath) fs.unlinkSync(this.pidFilePath); } catch (_) {}
   }
 }
 
