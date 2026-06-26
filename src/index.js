@@ -61,7 +61,10 @@ class DeltaUpdater extends EventEmitter {
       options.autoUpdater || require("electron-updater").autoUpdater;
     this.hostURL = options.hostURL || null;
     this.logo = options.logo || null;
+    this.feedURL = options.feedURL || null;
     this.keepDeltaCount = options.keepDeltaCount || 3;
+    this.splashScreen = options.splashScreen !== false;
+    this.splashTitle = options.splashTitle || getAppName();
 
     // 绑定 this 防止作为事件回调时丢失上下文
     this.onQuit = this.onQuit.bind(this);
@@ -70,7 +73,6 @@ class DeltaUpdater extends EventEmitter {
       this.setConfigPath();
       this.prepareUpdater();
       this.appPath = stripTrailingSlash(path.dirname(app.getPath("exe")));
-      this.appName = getAppName();
       this.logger.info("[Updater] 应用路径 = ", this.appPath);
     }
   }
@@ -250,7 +252,7 @@ class DeltaUpdater extends EventEmitter {
   }
 
   createSplashWindow() {
-    this.updaterWindow = getWindow({ logo: this.logo, appName: this.appName });
+    this.updaterWindow = getWindow({ logo: this.logo, splashTitle: this.splashTitle });
   }
 
   /**
@@ -432,27 +434,32 @@ class DeltaUpdater extends EventEmitter {
     });
   }
 
-  async boot({ splashScreen = false } = { splashScreen: true }) {
+  async boot() {
     this.logger.info("[Updater] 启动中");
     if (!this.hostURL) {
       this.hostURL = await this.guessHostURL();
     }
 
-    if (splashScreen) {
+    // 如果构造时传了 feedURL，自动设置
+    if (this.feedURL) {
+      await this.setFeedURL(this.feedURL);
+    }
+
+    if (this.splashScreen) {
       const startURL = getStartURL();
       this.createSplashWindow();
       this.updaterWindow.loadURL(startURL);
     }
     return new Promise((resolve, reject) => {
       this.attachListeners(resolve, reject);
-      if (!splashScreen) {
+      if (!this.splashScreen) {
         resolve();
       }
     })
       .then(() => {
         this.logger.info("[Updater] 启动完成");
         if (
-          splashScreen &&
+          this.splashScreen &&
           this.updaterWindow &&
           !this.updaterWindow.isDestroyed()
         ) {
