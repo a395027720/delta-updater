@@ -54,19 +54,33 @@ const getWindow = (options) => {
     },
   });
 
-  // 如果传入了自定义 logo，页面加载后注入
-  if (opts.logo) {
+  // dom-ready 后注入自定义配置
+  win.webContents.once("dom-ready", () => {
+    const scripts = [];
+
+    // 自定义标题
+    if (opts.title) {
+      scripts.push(
+        "window.__CUSTOM_TITLE__ = '" + opts.title.replace(/'/g, "\\'") + "';" +
+        "var t = document.getElementById('titleText');" +
+        "if (t) { t.textContent = window.__CUSTOM_TITLE__; document.title = window.__CUSTOM_TITLE__; }"
+      );
+    }
+
+    // 自定义 logo
     const dataURI = toDataURI(opts.logo);
     if (dataURI) {
-      win.webContents.once("dom-ready", () => {
-        win.webContents.executeJavaScript(
-          "window.__CUSTOM_LOGO__ = '" + dataURI + "';" +
-          "var el = document.getElementById('logoImg');" +
-          "if (el) el.src = window.__CUSTOM_LOGO__;"
-        ).catch(() => {});
-      });
+      scripts.push(
+        "window.__CUSTOM_LOGO__ = '" + dataURI + "';" +
+        "var el = document.getElementById('logoImg');" +
+        "if (el) el.src = window.__CUSTOM_LOGO__;"
+      );
     }
-  }
+
+    if (scripts.length) {
+      win.webContents.executeJavaScript(scripts.join(";")).catch(() => {});
+    }
+  });
 
   return win;
 };

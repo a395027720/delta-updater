@@ -63,6 +63,7 @@ class DeltaUpdater extends EventEmitter {
       options.autoUpdater || require("electron-updater").autoUpdater;
     this.hostURL = options.hostURL || null;
     this.logo = options.logo || null;
+    this.title = options.title || null;
     this.keepDeltaCount = options.keepDeltaCount || 3;
 
     // 绑定 this 防止作为事件回调时丢失上下文
@@ -253,7 +254,7 @@ class DeltaUpdater extends EventEmitter {
   }
 
   createSplashWindow() {
-    this.updaterWindow = getWindow({ logo: this.logo });
+    this.updaterWindow = getWindow({ logo: this.logo, title: this.title });
   }
 
   attachListeners(resolve, reject) {
