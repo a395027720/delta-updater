@@ -114,6 +114,31 @@ class DeltaUpdater extends EventEmitter {
     return provider.baseUrl.href;
   }
 
+  /**
+   * 获取更新缓存根目录
+   * Windows: %PROGRAMDATA%\{updaterCacheDirName}  （避免 AppData\Local 被360误报）
+   * macOS:   ~/Library/Application Support/{updaterCacheDirName}
+   */
+  getDeltaUpdaterRootPath() {
+    const cacheDirName = this.updateConfig.updaterCacheDirName;
+    if (process.platform === "win32") {
+      // 优先使用 ProgramData（C:\ProgramData），微软推荐的应用共享数据目录
+      // Chrome、VS Code 等正规软件均使用此路径存放更新文件，杀软误报率低
+      const programData =
+        process.env.ProgramData || process.env.ALLUSERSPROFILE;
+      if (programData) {
+        return path.join(programData, cacheDirName);
+      }
+      // 降级：如果 ProgramData 不可用（极其罕见），回退到 AppData/Local
+      return path.join(app.getPath("appData"), `../Local/${cacheDirName}`);
+    }
+    // macOS: 保持原有路径
+    return path.join(
+      app.getPath("appData"),
+      `../Application Support/${cacheDirName}`,
+    );
+  }
+
   async prepareUpdater() {
     const channel = getChannel();
     if (!channel) return;
@@ -126,10 +151,7 @@ class DeltaUpdater extends EventEmitter {
     this.autoUpdater.autoDownload = false;
     this.autoUpdater.autoInstallOnAppQuit = false;
 
-    this.deltaUpdaterRootPath = path.join(
-      app.getPath("appData"),
-      `../Local/${this.updateConfig.updaterCacheDirName}`,
-    );
+    this.deltaUpdaterRootPath = this.getDeltaUpdaterRootPath();
 
     this.updateDetailsJSON = path.join(
       this.deltaUpdaterRootPath,
@@ -137,7 +159,7 @@ class DeltaUpdater extends EventEmitter {
     );
     this.deltaHolderPath = path.join(this.deltaUpdaterRootPath, "./deltas");
 
-    if (app.isPackaged && process.platform === "darwin") {
+    if (process.platform === "darwin") {
       this.macUpdaterPath = path.join(
         this.deltaUpdaterRootPath,
         "./mac-updater",
@@ -232,6 +254,24 @@ class DeltaUpdater extends EventEmitter {
 
   createSplashWindow() {
     this.updaterWindow = getWindow({ logo: this.logo });
+  }
+
+  /**
+   * 关闭 splash 窗口。
+   * 外部（如主应用加载完成时）调用此方法主动关闭 splash。
+   * 如果外部在一定时间内未调用，内部会通过 fallback 定时器自动关闭。
+   */
+  closeSplash() {
+    if (this._splashTimer) {
+      clearTimeout(this._splashTimer);
+      this._splashTimer = null;
+    }
+    this._splashClosed = true;
+    if (this.updaterWindow && !this.updaterWindow.isDestroyed()) {
+      this.logger.info("[Updater] 关闭 splash 窗口");
+      this.updaterWindow.close();
+    }
+    this.updaterWindow = null;
   }
 
   attachListeners(resolve, reject) {
@@ -411,25 +451,20 @@ class DeltaUpdater extends EventEmitter {
     })
       .then(() => {
         this.logger.info("[Updater] 启动完成");
-        if (
-          splashScreen &&
-          this.updaterWindow &&
-          !this.updaterWindow.isDestroyed()
-        ) {
-          this.updaterWindow.close();
-          this.updaterWindow = null;
+        if (splashScreen && this.updaterWindow && !this.updaterWindow.isDestroyed()) {
+          // 启动一个 fallback 定时器：10 秒后如果外部未调用 closeSplash()，则自动关闭
+          this._splashClosed = false;
+          this._splashTimer = setTimeout(() => {
+            if (!this._splashClosed) {
+              this.logger.info("[Updater] splash 超时未关闭，内部自动关闭");
+              this.closeSplash();
+            }
+          }, 10000);
         }
       })
       .catch((err) => {
         this.logger.error("[Updater] 启动错误 ", err);
-        if (
-          splashScreen &&
-          this.updaterWindow &&
-          !this.updaterWindow.isDestroyed()
-        ) {
-          this.updaterWindow.close();
-          this.updaterWindow = null;
-        }
+        this.closeSplash();
       });
   }
 
@@ -588,6 +623,8 @@ class DeltaUpdater extends EventEmitter {
       isDelta: true,
       attemptedVersion: version,
     });
+
+    // 先关闭所有窗口，避免退出流程中窗口事件干扰
     this.ensureSafeQuitAndInstall();
 
     try {
