@@ -18,8 +18,6 @@ const { newBaseUrl, newUrlFromBase } = require("./utils");
 const { getStartURL, getWindow, dispatchEvent } = require("./splash");
 
 const { app, BrowserWindow, Notification } = electron;
-const oneMinute = 60 * 1000;
-const fifteenMinutes = 15 * oneMinute;
 
 const getChannel = () => {
   const version = app.getVersion();
@@ -129,7 +127,7 @@ class DeltaUpdater extends EventEmitter {
       if (programData) {
         return path.join(programData, cacheDirName);
       }
-      // 降级：如果 ProgramData 不可用（极其罕见），回退到 AppData/Local
+      // 降级：如果 ProgramData 不可用，回退到 AppData/Local
       return path.join(app.getPath("appData"), `../Local/${cacheDirName}`);
     }
     // macOS: 保持原有路径
@@ -198,9 +196,6 @@ class DeltaUpdater extends EventEmitter {
 
   pollForUpdates(resolve, reject) {
     this.checkForUpdates(resolve, reject);
-    setInterval(() => {
-      this.checkForUpdates(resolve, reject);
-    }, fifteenMinutes);
   }
 
   ensureSafeQuitAndInstall() {
@@ -266,7 +261,6 @@ class DeltaUpdater extends EventEmitter {
       clearTimeout(this._splashTimer);
       this._splashTimer = null;
     }
-    this._splashClosed = true;
     if (this.updaterWindow && !this.updaterWindow.isDestroyed()) {
       this.logger.info("[Updater] 关闭 splash 窗口");
       this.updaterWindow.close();
@@ -451,15 +445,14 @@ class DeltaUpdater extends EventEmitter {
     })
       .then(() => {
         this.logger.info("[Updater] 启动完成");
-        if (splashScreen && this.updaterWindow && !this.updaterWindow.isDestroyed()) {
-          // 启动一个 fallback 定时器：10 秒后如果外部未调用 closeSplash()，则自动关闭
-          this._splashClosed = false;
+        if (
+          splashScreen &&
+          this.updaterWindow &&
+          !this.updaterWindow.isDestroyed()
+        ) {
           this._splashTimer = setTimeout(() => {
-            if (!this._splashClosed) {
-              this.logger.info("[Updater] splash 超时未关闭，内部自动关闭");
-              this.closeSplash();
-            }
-          }, 10000);
+            this.closeSplash();
+          }, 2000);
         }
       })
       .catch((err) => {
