@@ -18,6 +18,8 @@ const { newBaseUrl, newUrlFromBase } = require("./utils");
 const { getStartURL, getWindow, dispatchEvent } = require("./splash");
 
 const { app, BrowserWindow, Notification } = electron;
+const oneMinute = 60 * 1000;
+const fifteenMinutes = 15 * oneMinute;
 
 const getChannel = () => {
   const version = app.getVersion();
@@ -61,10 +63,7 @@ class DeltaUpdater extends EventEmitter {
       options.autoUpdater || require("electron-updater").autoUpdater;
     this.hostURL = options.hostURL || null;
     this.logo = options.logo || null;
-    this.feedURL = options.feedURL || null;
     this.keepDeltaCount = options.keepDeltaCount || 3;
-    this.splashScreen = options.splashScreen !== false;
-    this.splashTitle = options.splashTitle || getAppName();
 
     // 绑定 this 防止作为事件回调时丢失上下文
     this.onQuit = this.onQuit.bind(this);
@@ -73,6 +72,7 @@ class DeltaUpdater extends EventEmitter {
       this.setConfigPath();
       this.prepareUpdater();
       this.appPath = stripTrailingSlash(path.dirname(app.getPath("exe")));
+      this.appName = getAppName();
       this.logger.info("[Updater] 应用路径 = ", this.appPath);
     }
   }
@@ -198,6 +198,9 @@ class DeltaUpdater extends EventEmitter {
 
   pollForUpdates(resolve, reject) {
     this.checkForUpdates(resolve, reject);
+    setInterval(() => {
+      this.checkForUpdates(resolve, reject);
+    }, fifteenMinutes);
   }
 
   ensureSafeQuitAndInstall() {
@@ -205,8 +208,6 @@ class DeltaUpdater extends EventEmitter {
     app.removeAllListeners("window-all-closed");
     const browserWindows = BrowserWindow.getAllWindows();
     browserWindows.forEach((browserWindow) => {
-      // 跳过 splash 窗口，让它保持显示直到主应用就绪
-      if (browserWindow === this.updaterWindow) return;
       browserWindow.removeAllListeners("close");
       if (!browserWindow.isDestroyed()) {
         browserWindow.close();
@@ -252,13 +253,20 @@ class DeltaUpdater extends EventEmitter {
   }
 
   createSplashWindow() {
-    this.updaterWindow = getWindow({
-      logo: this.logo,
-      splashTitle: this.splashTitle,
-    });
+    this.updaterWindow = getWindow({ logo: this.logo });
   }
 
+  /**
+   * 关闭 splash 窗口。
+   * 外部（如主应用加载完成时）调用此方法主动关闭 splash。
+   * 如果外部在一定时间内未调用，内部会通过 fallback 定时器自动关闭。
+   */
   closeSplash() {
+    if (this._splashTimer) {
+      clearTimeout(this._splashTimer);
+      this._splashTimer = null;
+    }
+    this._splashClosed = true;
     if (this.updaterWindow && !this.updaterWindow.isDestroyed()) {
       this.logger.info("[Updater] 关闭 splash 窗口");
       this.updaterWindow.close();
@@ -321,7 +329,7 @@ class DeltaUpdater extends EventEmitter {
 
     this.logger.info("[Updater] 添加退出监听器");
 
-    // app.on("quit", this.onQuit);
+    app.on("quit", this.onQuit);
 
     this.autoUpdater.on("update-not-available", () => {
       this.logger.info("[Updater] 没有可用更新");
@@ -424,30 +432,35 @@ class DeltaUpdater extends EventEmitter {
     });
   }
 
-  async boot() {
+  async boot({ splashScreen = false } = { splashScreen: true }) {
     this.logger.info("[Updater] 启动中");
     if (!this.hostURL) {
       this.hostURL = await this.guessHostURL();
     }
 
-    // 如果构造时传了 feedURL，自动设置
-    if (this.feedURL) {
-      await this.setFeedURL(this.feedURL);
-    }
-
-    if (this.splashScreen) {
+    if (splashScreen) {
       const startURL = getStartURL();
       this.createSplashWindow();
       this.updaterWindow.loadURL(startURL);
     }
     return new Promise((resolve, reject) => {
       this.attachListeners(resolve, reject);
-      if (!this.splashScreen) {
+      if (!splashScreen) {
         resolve();
       }
     })
       .then(() => {
         this.logger.info("[Updater] 启动完成");
+        if (splashScreen && this.updaterWindow && !this.updaterWindow.isDestroyed()) {
+          // 启动一个 fallback 定时器：10 秒后如果外部未调用 closeSplash()，则自动关闭
+          this._splashClosed = false;
+          this._splashTimer = setTimeout(() => {
+            if (!this._splashClosed) {
+              this.logger.info("[Updater] splash 超时未关闭，内部自动关闭");
+              this.closeSplash();
+            }
+          }, 10000);
+        }
       })
       .catch((err) => {
         this.logger.error("[Updater] 启动错误 ", err);

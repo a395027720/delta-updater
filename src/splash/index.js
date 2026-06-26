@@ -3,7 +3,7 @@
  * @Author: GaoJQiang
  * @Date: 2022-08-17 02:33:25
  * @LastEditors: GaoJQiang
- * @LastEditTime: 2026-06-26 19:20:30
+ * @LastEditTime: 2026-06-24 20:51:58
  */
 const { BrowserWindow } = require("electron");
 const path = require("path");
@@ -54,32 +54,18 @@ const getWindow = (options) => {
     },
   });
 
-  // 注入自定义 logo 和应用名称
-  const injections = [];
-
+  // 如果传入了自定义 logo，页面加载后注入
   if (opts.logo) {
     const dataURI = toDataURI(opts.logo);
     if (dataURI) {
-      injections.push(
-        "window.__CUSTOM_LOGO__ = '" + dataURI + "';" +
-        "var logoEl = document.getElementById('logoImg');" +
-        "if (logoEl) logoEl.src = window.__CUSTOM_LOGO__;"
-      );
+      win.webContents.once("dom-ready", () => {
+        win.webContents.executeJavaScript(
+          "window.__CUSTOM_LOGO__ = '" + dataURI + "';" +
+          "var el = document.getElementById('logoImg');" +
+          "if (el) el.src = window.__CUSTOM_LOGO__;"
+        ).catch(() => {});
+      });
     }
-  }
-
-  if (opts.splashTitle) {
-    injections.push(
-      "window.__APP_NAME__ = '" + opts.splashTitle + "';" +
-      "var tEl = document.getElementById('titleText');" +
-      "if (tEl) tEl.textContent = '" + opts.splashTitle + "';"
-    );
-  }
-
-  if (injections.length > 0) {
-    win.webContents.once("dom-ready", () => {
-      win.webContents.executeJavaScript(injections.join("")).catch(() => {});
-    });
   }
 
   return win;
