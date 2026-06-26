@@ -139,20 +139,21 @@
         progressBar.style.transform = "scaleX(" + pct / 100 + ")";
       }
 
-      // 支持自定义标题注入
-      if (window.__CUSTOM_TITLE__) {
-        var titleText = document.getElementById("titleText");
-        if (titleText) {
-          titleText.textContent = window.__CUSTOM_TITLE__;
-          document.title = window.__CUSTOM_TITLE__;
+      // 支持自定义标题和 logo 注入（preload 通过 contextBridge 暴露）
+      if (window.__deltaConfig__) {
+        var cfg = window.__deltaConfig__;
+        if (cfg.title) {
+          var titleText = document.getElementById("titleText");
+          if (titleText) {
+            titleText.textContent = cfg.title;
+            document.title = cfg.title;
+          }
         }
-      }
-
-      // 支持自定义 logo 注入
-      if (window.__CUSTOM_LOGO__) {
-        var logoImg = document.getElementById("logoImg");
-        if (logoImg) {
-          logoImg.src = window.__CUSTOM_LOGO__;
+        if (cfg.logo) {
+          var logoImg = document.getElementById("logoImg");
+          if (logoImg) {
+            logoImg.src = cfg.logo;
+          }
         }
       }
 

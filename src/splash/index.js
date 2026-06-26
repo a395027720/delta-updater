@@ -31,6 +31,19 @@ function toDataURI(logo) {
 
 const getWindow = (options) => {
   const opts = options || {};
+
+  // 通过 additionalArguments 将自定义配置传入 preload，
+  // 由 preload 通过 contextBridge 暴露，页面脚本执行前即可读取，
+  // 避免 executeJavaScript 的时序问题及 sandbox 环境兼容风险
+  const additionalArgs = [];
+  if (opts.title) {
+    additionalArgs.push(`--delta-title=${encodeURIComponent(opts.title)}`);
+  }
+  const dataURI = toDataURI(opts.logo);
+  if (dataURI) {
+    additionalArgs.push(`--delta-logo=${encodeURIComponent(dataURI)}`);
+  }
+
   const win = new BrowserWindow({
     width: 360,
     height: 150,
@@ -50,36 +63,9 @@ const getWindow = (options) => {
       enableRemoteModule: false,
       disableBlinkFeatures: "Auxclick",
       sandbox: true,
+      additionalArguments: additionalArgs,
       preload: path.join(__dirname, "preload.js"),
     },
-  });
-
-  // dom-ready 后注入自定义配置
-  win.webContents.once("dom-ready", () => {
-    const scripts = [];
-
-    // 自定义标题
-    if (opts.title) {
-      scripts.push(
-        "window.__CUSTOM_TITLE__ = '" + opts.title.replace(/'/g, "\\'") + "';" +
-        "var t = document.getElementById('titleText');" +
-        "if (t) { t.textContent = window.__CUSTOM_TITLE__; document.title = window.__CUSTOM_TITLE__; }"
-      );
-    }
-
-    // 自定义 logo
-    const dataURI = toDataURI(opts.logo);
-    if (dataURI) {
-      scripts.push(
-        "window.__CUSTOM_LOGO__ = '" + dataURI + "';" +
-        "var el = document.getElementById('logoImg');" +
-        "if (el) el.src = window.__CUSTOM_LOGO__;"
-      );
-    }
-
-    if (scripts.length) {
-      win.webContents.executeJavaScript(scripts.join(";")).catch(() => {});
-    }
   });
 
   return win;
