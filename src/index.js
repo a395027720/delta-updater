@@ -208,6 +208,8 @@ class DeltaUpdater extends EventEmitter {
     app.removeAllListeners("window-all-closed");
     const browserWindows = BrowserWindow.getAllWindows();
     browserWindows.forEach((browserWindow) => {
+      // 跳过 splash 窗口，让它保持显示直到主应用就绪
+      if (browserWindow === this.updaterWindow) return;
       browserWindow.removeAllListeners("close");
       if (!browserWindow.isDestroyed()) {
         browserWindow.close();
@@ -253,7 +255,7 @@ class DeltaUpdater extends EventEmitter {
   }
 
   createSplashWindow() {
-    this.updaterWindow = getWindow({ logo: this.logo });
+    this.updaterWindow = getWindow({ logo: this.logo, appName: this.appName });
   }
 
   /**

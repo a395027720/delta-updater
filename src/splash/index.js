@@ -68,6 +68,15 @@ const getWindow = (options) => {
     }
   }
 
+  // 注入应用名称，splash 标题会根据状态显示 "HIS系统 正在启动" 等
+  if (opts.appName) {
+    win.webContents.once("dom-ready", () => {
+      win.webContents.executeJavaScript(
+        "window.__APP_NAME__ = '" + opts.appName + "';"
+      ).catch(() => {});
+    });
+  }
+
   return win;
 };
 
