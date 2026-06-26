@@ -3,7 +3,7 @@
  * @Author: GaoJQiang
  * @Date: 2022-08-17 02:33:25
  * @LastEditors: GaoJQiang
- * @LastEditTime: 2026-06-24 20:51:58
+ * @LastEditTime: 2026-06-26 19:20:30
  */
 const { BrowserWindow } = require("electron");
 const path = require("path");
@@ -54,26 +54,31 @@ const getWindow = (options) => {
     },
   });
 
-  // 如果传入了自定义 logo，页面加载后注入
+  // 注入自定义 logo 和应用名称
+  const injections = [];
+
   if (opts.logo) {
     const dataURI = toDataURI(opts.logo);
     if (dataURI) {
-      win.webContents.once("dom-ready", () => {
-        win.webContents.executeJavaScript(
-          "window.__CUSTOM_LOGO__ = '" + dataURI + "';" +
-          "var el = document.getElementById('logoImg');" +
-          "if (el) el.src = window.__CUSTOM_LOGO__;"
-        ).catch(() => {});
-      });
+      injections.push(
+        "window.__CUSTOM_LOGO__ = '" + dataURI + "';" +
+        "var logoEl = document.getElementById('logoImg');" +
+        "if (logoEl) logoEl.src = window.__CUSTOM_LOGO__;"
+      );
     }
   }
 
-  // 注入应用名称，splash 标题会根据状态显示 "HIS系统 检查更新" 等
   if (opts.splashTitle) {
+    injections.push(
+      "window.__APP_NAME__ = '" + opts.splashTitle + "';" +
+      "var titleEl = document.getElementById('titleText');" +
+      "if (titleEl) titleEl.textContent = '" + opts.splashTitle + " 正在启动';"
+    );
+  }
+
+  if (injections.length > 0) {
     win.webContents.once("dom-ready", () => {
-      win.webContents.executeJavaScript(
-        "window.__APP_NAME__ = '" + opts.splashTitle + "';"
-      ).catch(() => {});
+      win.webContents.executeJavaScript(injections.join("")).catch(() => {});
     });
   }
 

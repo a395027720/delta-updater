@@ -252,25 +252,15 @@ class DeltaUpdater extends EventEmitter {
   }
 
   createSplashWindow() {
-    this.updaterWindow = getWindow({ logo: this.logo, splashTitle: this.splashTitle });
+    this.updaterWindow = getWindow({
+      logo: this.logo,
+      splashTitle: this.splashTitle,
+    });
   }
 
-  /**
-   * 关闭 splash 窗口。
-   * 外部（如主应用加载完成时）调用此方法主动关闭 splash。
-   * 如果外部在一定时间内未调用，内部会通过 fallback 定时器自动关闭。
-   */
   closeSplash() {
-    if (this._splashTimer) {
-      clearTimeout(this._splashTimer);
-      this._splashTimer = null;
-    }
-
-    console.log("[Updater] 关闭 splash 窗口前");
-    s;
-    this._splashClosed = true;
     if (this.updaterWindow && !this.updaterWindow.isDestroyed()) {
-      this.logger.info("[Updater] 关闭 splash 窗口后");
+      this.logger.info("[Updater] 关闭 splash 窗口");
       this.updaterWindow.close();
     }
     this.updaterWindow = null;
@@ -448,7 +438,9 @@ class DeltaUpdater extends EventEmitter {
     if (this.splashScreen) {
       const startURL = getStartURL();
       this.createSplashWindow();
-      this.updaterWindow.loadURL(startURL);
+      // await loadURL 确保页面加载完成（dom-ready 已触发，logo/title 已注入）
+      // 之后再 dispatch 事件才能拿到正确的 __CUSTOM_LOGO__ / __APP_NAME__
+      await this.updaterWindow.loadURL(startURL);
     }
     return new Promise((resolve, reject) => {
       this.attachListeners(resolve, reject);
@@ -458,19 +450,11 @@ class DeltaUpdater extends EventEmitter {
     })
       .then(() => {
         this.logger.info("[Updater] 启动完成");
-        if (
-          this.splashScreen &&
-          this.updaterWindow &&
-          !this.updaterWindow.isDestroyed()
-        ) {
-          // 启动一个 fallback 定时器：10 秒后如果外部未调用 closeSplash()，则自动关闭
-          this._splashClosed = false;
-          this._splashTimer = setTimeout(() => {
-            if (!this._splashClosed) {
-              this.logger.info("[Updater] splash 超时未关闭，内部自动关闭");
-              this.closeSplash();
-            }
-          }, 10000);
+        // 无更新时直接关闭 splash；有更新时 autoUpdateInfo 已设置，splash 保持到重启
+        if (this.splashScreen && !this.autoUpdateInfo) {
+          setTimeout(() => {
+            this.closeSplash();
+          }, 5000);
         }
       })
       .catch((err) => {
