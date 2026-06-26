@@ -422,7 +422,7 @@ class DeltaUpdater extends EventEmitter {
     }
 
     if (splashScreen) {
-      const startURL = getStartURL();
+      const startURL = getStartURL({ logo: this.logo, title: this.title });
       this.createSplashWindow();
       this.updaterWindow.loadURL(startURL);
     }
